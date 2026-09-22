@@ -65,15 +65,15 @@ export default function ChatListScreen({ onOpenChat }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F8F7" },
+  container: { flex: 1, backgroundColor: "#F7F9FA" },
   header: { padding: 22, backgroundColor: "#FFFFFF" },
   kicker: {
-    color: "#5C8A80",
+    color: "#6B8FA3",
     fontSize: 11,
     fontWeight: "700",
     letterSpacing: 1,
   },
-  title: { color: "#183B36", fontSize: 28, fontWeight: "800", marginTop: 5 },
+  title: { color: "#263B43", fontSize: 28, fontWeight: "800", marginTop: 5 },
   list: { padding: 14 },
   row: {
     backgroundColor: "#FFF",
@@ -87,16 +87,16 @@ const styles = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: "#D9EFE9",
+    backgroundColor: "#DDE9EE",
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarText: { color: "#20786B", fontSize: 19, fontWeight: "800" },
+  avatarText: { color: "#547A8A", fontSize: 19, fontWeight: "800" },
   copy: { flex: 1, marginLeft: 12 },
-  name: { color: "#183B36", fontWeight: "800", fontSize: 15 },
-  preview: { color: "#78908B", marginTop: 5 },
+  name: { color: "#263B43", fontWeight: "800", fontSize: 15 },
+  preview: { color: "#71858C", marginTop: 5 },
   meta: { alignItems: "flex-end", gap: 7 },
-  time: { color: "#A2B3AF", fontSize: 11 },
+  time: { color: "#9AAAB0", fontSize: 11 },
   unread: {
     backgroundColor: "#E77D58",
     borderRadius: 10,

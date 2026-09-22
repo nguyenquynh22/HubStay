@@ -45,7 +45,7 @@ export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
           value={time}
           onChangeText={setTime}
           placeholder="Ví dụ: 18:30, ngày 20/10"
-          placeholderTextColor="#A2B3AF"
+          placeholderTextColor="#9AAAB0"
           style={styles.input}
         />
         <Text style={styles.label}>Ghi chú (không bắt buộc)</Text>
@@ -53,7 +53,7 @@ export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
           value={note}
           onChangeText={setNote}
           placeholder="Bạn đi cùng ai? Cần hỏi thêm gì?"
-          placeholderTextColor="#A2B3AF"
+          placeholderTextColor="#9AAAB0"
           multiline
           style={[styles.input, styles.note]}
         />
@@ -65,28 +65,28 @@ export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
   );
 }
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F8F7" },
+  container: { flex: 1, backgroundColor: "#F7F9FA" },
   header: {
     backgroundColor: "#FFF",
     padding: 17,
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderColor: "#DCE9E5",
+    borderColor: "#DCE5E8",
   },
-  back: { color: "#20786B", fontWeight: "700" },
+  back: { color: "#547A8A", fontWeight: "700" },
   title: {
     flex: 1,
     textAlign: "center",
-    color: "#183B36",
+    color: "#263B43",
     fontSize: 17,
     fontWeight: "800",
   },
   content: { padding: 22 },
-  heading: { color: "#183B36", fontSize: 24, fontWeight: "800" },
-  sub: { color: "#78908B", lineHeight: 20, marginTop: 7, marginBottom: 23 },
+  heading: { color: "#263B43", fontSize: 24, fontWeight: "800" },
+  sub: { color: "#71858C", lineHeight: 20, marginTop: 7, marginBottom: 23 },
   label: {
-    color: "#38564F",
+    color: "#445B63",
     fontWeight: "800",
     marginTop: 14,
     marginBottom: 7,
@@ -94,14 +94,14 @@ const styles = StyleSheet.create({
   input: {
     backgroundColor: "#FFF",
     borderWidth: 1,
-    borderColor: "#DCE9E5",
+    borderColor: "#DCE5E8",
     borderRadius: 12,
     padding: 14,
-    color: "#183B36",
+    color: "#263B43",
   },
   note: { height: 100, textAlignVertical: "top" },
   button: {
-    backgroundColor: "#20786B",
+    backgroundColor: "#6B8FA3",
     padding: 16,
     borderRadius: 13,
     alignItems: "center",

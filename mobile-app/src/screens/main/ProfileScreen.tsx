@@ -1,6 +1,14 @@
 // src/screens/main/ProfileScreen.tsx
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  TouchableOpacity,
+  ScrollView,
+  Alert,
+} from "react-native";
 
 interface Props {
   onVerifyPress?: () => void;
@@ -9,17 +17,21 @@ interface Props {
 export default function ProfileScreen({ onVerifyPress }: Props) {
   // Mock dữ liệu người dùng
   const user = {
-    name: 'Nguyễn Thị Như Quỳnh',
-    role: 'Sinh viên UTEHY',
-    email: 'quynhntn@gmail.com',
+    name: "Nguyễn Thị Như Quỳnh",
+    role: "Sinh viên UTEHY",
+    email: "quynhntn@gmail.com",
     isVerified: false, // Trạng thái xác thực
-    avatarUrl: 'https://via.placeholder.com/150/00B14F/ffffff?text=User',
+    avatarUrl: "https://via.placeholder.com/150/00B14F/ffffff?text=User",
   };
 
   const handleLogout = () => {
-    Alert.alert('Đăng xuất', 'Bạn có chắc chắn muốn đăng xuất không?', [
-      { text: 'Hủy', style: 'cancel' },
-      { text: 'Đăng xuất', style: 'destructive', onPress: () => console.log('Logged out') },
+    Alert.alert("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất không?", [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Đăng xuất",
+        style: "destructive",
+        onPress: () => console.log("Logged out"),
+      },
     ]);
   };
 
@@ -36,11 +48,15 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
         <View style={styles.badgeContainer}>
           {user.isVerified ? (
             <View style={[styles.badge, styles.verifiedBadge]}>
-              <Text style={styles.verifiedBadgeText}>✓ Tài khoản đã xác thực Uy tín</Text>
+              <Text style={styles.verifiedBadgeText}>
+                ✓ Tài khoản đã xác thực Uy tín
+              </Text>
             </View>
           ) : (
             <View style={[styles.badge, styles.unverifiedBadge]}>
-              <Text style={styles.unverifiedBadgeText}>⚠️ Chưa xác thực Danh tính</Text>
+              <Text style={styles.unverifiedBadgeText}>
+                ⚠️ Chưa xác thực Danh tính
+              </Text>
             </View>
           )}
         </View>
@@ -50,9 +66,12 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
       {!user.isVerified && (
         <TouchableOpacity style={styles.verifyBanner} onPress={onVerifyPress}>
           <View style={styles.verifyBannerContent}>
-            <Text style={styles.verifyBannerTitle}>🛡️ Xác thực tài khoản ngay</Text>
+            <Text style={styles.verifyBannerTitle}>
+              🛡️ Xác thực tài khoản ngay
+            </Text>
             <Text style={styles.verifyBannerSub}>
-              Tải lên CCCD/Thẻ Sinh viên để nhận Badge Tích Xanh & ưu tiên hiển thị bài đăng.
+              Tải lên CCCD/Thẻ Sinh viên để nhận Badge Tích Xanh & ưu tiên hiển
+              thị bài đăng.
             </Text>
           </View>
           <Text style={styles.verifyArrow}>›</Text>
@@ -62,7 +81,7 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
       {/* 3. Danh Sách Tùy Chọn & Cài Đặt */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tài khoản & Bảo mật</Text>
-        
+
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>👤 Cập nhật thông tin cá nhân</Text>
           <Text style={styles.menuArrow}>›</Text>
@@ -93,7 +112,9 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuText}>📄 Điều khoản & Chính sách bảo mật</Text>
+          <Text style={styles.menuText}>
+            📄 Điều khoản & Chính sách bảo mật
+          </Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
       </View>
@@ -109,32 +130,89 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#F3F4F6' },
-  profileHeader: { backgroundColor: '#FFF', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderColor: '#E5E7EB' },
+  container: { flex: 1, backgroundColor: "#F3F4F6" },
+  profileHeader: {
+    backgroundColor: "#FFF",
+    padding: 20,
+    alignItems: "center",
+    borderBottomWidth: 1,
+    borderColor: "#E5E7EB",
+  },
   avatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 10 },
-  userName: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
-  userRole: { fontSize: 13, color: '#00B14F', fontWeight: 'bold', marginTop: 2 },
-  userEmail: { fontSize: 12, color: '#6B7280', marginTop: 2 },
+  userName: { fontSize: 18, fontWeight: "bold", color: "#1F2937" },
+  userRole: {
+    fontSize: 13,
+    color: "#6B8FA3",
+    fontWeight: "bold",
+    marginTop: 2,
+  },
+  userEmail: { fontSize: 12, color: "#6B7280", marginTop: 2 },
   badgeContainer: { marginTop: 10 },
   badge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
-  verifiedBadge: { backgroundColor: '#DCFCE7' },
-  verifiedBadgeText: { color: '#15803D', fontSize: 12, fontWeight: 'bold' },
-  unverifiedBadge: { backgroundColor: '#FEF3C7' },
-  unverifiedBadgeText: { color: '#B45309', fontSize: 12, fontWeight: 'bold' },
+  verifiedBadge: { backgroundColor: "#DCFCE7" },
+  verifiedBadgeText: { color: "#16A34A", fontSize: 12, fontWeight: "bold" },
+  unverifiedBadge: { backgroundColor: "#FEF3C7" },
+  unverifiedBadgeText: { color: "#B45309", fontSize: 12, fontWeight: "bold" },
 
-  verifyBanner: { margin: 14, backgroundColor: '#ECFDF5', borderRadius: 10, padding: 14, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#A7F3D0' },
+  verifyBanner: {
+    margin: 14,
+    backgroundColor: "#E8F0F3",
+    borderRadius: 10,
+    padding: 14,
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#D6E3E8",
+  },
   verifyBannerContent: { flex: 1 },
-  verifyBannerTitle: { fontWeight: 'bold', color: '#065F46', fontSize: 14 },
-  verifyBannerSub: { fontSize: 12, color: '#047857', marginTop: 4 },
-  verifyArrow: { fontSize: 22, color: '#047857', fontWeight: 'bold', marginLeft: 8 },
+  verifyBannerTitle: { fontWeight: "bold", color: "#405D6B", fontSize: 14 },
+  verifyBannerSub: { fontSize: 12, color: "#547A8A", marginTop: 4 },
+  verifyArrow: {
+    fontSize: 22,
+    color: "#547A8A",
+    fontWeight: "bold",
+    marginLeft: 8,
+  },
 
-  section: { backgroundColor: '#FFF', marginTop: 12, paddingHorizontal: 16, borderTopWidth: 1, borderBottomWidth: 1, borderColor: '#E5E7EB' },
-  sectionTitle: { fontSize: 12, fontWeight: 'bold', color: '#9CA3AF', textTransform: 'uppercase', marginTop: 12, marginBottom: 6 },
-  menuItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  menuText: { fontSize: 14, color: '#374151' },
-  menuArrow: { fontSize: 16, color: '#9CA3AF' },
+  section: {
+    backgroundColor: "#FFF",
+    marginTop: 12,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  sectionTitle: {
+    fontSize: 12,
+    fontWeight: "bold",
+    color: "#9CA3AF",
+    textTransform: "uppercase",
+    marginTop: 12,
+    marginBottom: 6,
+  },
+  menuItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  menuText: { fontSize: 14, color: "#374151" },
+  menuArrow: { fontSize: 16, color: "#9CA3AF" },
 
-  logoutBtn: { margin: 16, backgroundColor: '#FEE2E2', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
-  logoutText: { color: '#DC2626', fontWeight: 'bold', fontSize: 14 },
-  versionText: { textAlign: 'center', color: '#9CA3AF', fontSize: 11, marginBottom: 30 },
+  logoutBtn: {
+    margin: 16,
+    backgroundColor: "#FEE2E2",
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: "center",
+  },
+  logoutText: { color: "#DC2626", fontWeight: "bold", fontSize: 14 },
+  versionText: {
+    textAlign: "center",
+    color: "#9CA3AF",
+    fontSize: 11,
+    marginBottom: 30,
+  },
 });

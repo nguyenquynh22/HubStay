@@ -1,191 +1,712 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
-  Image,
   TouchableOpacity,
+  Image,
+  ScrollView,
+  Share,
   Alert,
+  Linking,
+  Dimensions,
 } from "react-native";
-import { Post } from "../../types/mockData";
+import { MaterialIcons } from "@expo/vector-icons";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+// Mock Data Bài đăng (Giả lập nhận dữ liệu từ CreatePostScreen)
+const MOCK_POST = {
+  id: "post_101",
+  postType: "RENTAL", // 'RENTAL' | 'SHARE' | 'PASS' | 'FIND'
+  postTypeLabel: "CHO THUÊ",
+  title: "Phòng khép kín sạch đẹp có gác lửng, gần ĐH SPKT",
+  price: "2.800.000 đ/tháng",
+  address: "Gần ngõ 64 Đường Chu Văn An, P. Hiến Nam, TP. Hưng Yên",
+  nearestSchool: "ĐH SPKT Hưng Yên (cách ~400m)",
+  description:
+    "- Phòng diện tích 25m2, mới sơn sửa 100%, gác cao không đụng đầu.\n- Tiện nghi: Điều hòa Inverter, bình nóng lạnh, tủ quần áo.\n- Điện: 3.500đ/kWh, Nước: 25.000đ/khối, Wifi tốc độ cao miễn phí.\n- Giờ giấc tự do, khóa cửa vân tay an toàn.",
+  images: [
+    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800",
+    "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800",
+    "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800",
+  ],
+  author: {
+    name: "Nguyễn Văn Chủ Trọ",
+    avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+    isVerified: true, // Trạng thái xác minh
+    phone: "0987654321",
+    joinedDate: "Tháng 03/2024",
+  },
+  coords: {
+    lat: 20.9324,
+    lng: 106.0081,
+  },
+  enableBooking: true,
+  createdAt: "2 giờ trước",
+};
 
 interface Props {
-  post: Post | null;
-  onBack: () => void;
-  onReport: () => void;
-  onOpenChat: () => void;
+  onBack?: () => void;
+  onNavigateToChat?: (authorId: string) => void;
+  onNavigateToBooking?: (postId: string) => void;
 }
+
 export default function PostDetailScreen({
-  post,
   onBack,
-  onReport,
-  onOpenChat,
+  onNavigateToChat,
+  onNavigateToBooking,
 }: Props) {
-  if (!post) return null;
+  // 1. Image Slider State
+  const [currentImgIndex, setCurrentImgIndex] = useState(0);
+
+  // 2. Interaction State
+  const [isSaved, setIsSaved] = useState(false);
+  const [likes, setLikes] = useState(18);
+  const [dislikes, setDislikes] = useState(1);
+  const [userReaction, setUserReaction] = useState<"like" | "dislike" | null>(null);
+
+  // 3. Map View Toggle State
+  const [showMap, setShowMap] = useState(false);
+
+  // Next / Previous image controls
+  const handlePrevImage = () => {
+    if (currentImgIndex > 0) {
+      setCurrentImgIndex((prev) => prev - 1);
+    }
+  };
+
+  const handleNextImage = () => {
+    if (currentImgIndex < MOCK_POST.images.length - 1) {
+      setCurrentImgIndex((prev) => prev + 1);
+    }
+  };
+
+  // Chia sẻ bài viết
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Xem phòng trọ này nè: ${MOCK_POST.title} - Giá: ${MOCK_POST.price}`,
+      });
+    } catch (error) {
+      console.log("Error sharing:", error);
+    }
+  };
+
+  // Xử lý Thích / Không thích
+  const handleLike = () => {
+    if (userReaction === "like") {
+      setUserReaction(null);
+      setLikes((prev) => prev - 1);
+    } else {
+      if (userReaction === "dislike") {
+        setDislikes((prev) => prev - 1);
+      }
+      setUserReaction("like");
+      setLikes((prev) => prev + 1);
+    }
+  };
+
+  const handleDislike = () => {
+    if (userReaction === "dislike") {
+      setUserReaction(null);
+      setDislikes((prev) => prev - 1);
+    } else {
+      if (userReaction === "like") {
+        setLikes((prev) => prev - 1);
+      }
+      setUserReaction("dislike");
+      setDislikes((prev) => prev + 1);
+    }
+  };
+
+  // Mở ứng dụng Google Maps bên ngoài khi nhấn xem bản đồ
+  const handleOpenExternalMap = () => {
+    if (MOCK_POST.coords) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${MOCK_POST.coords.lat},${MOCK_POST.coords.lng}`;
+      Linking.openURL(url);
+    }
+  };
+
+  // Báo cáo bài đăng
+  const handleReport = () => {
+    Alert.alert(
+      "Báo cáo bài đăng",
+      "Bạn muốn báo cáo bài đăng này vì lý do gì?",
+      [
+        { text: "Thông tin sai sự thật", onPress: () => sendReport("Sai thông tin") },
+        { text: "Lừa đảo / Phòng không có thật", onPress: () => sendReport("Lừa đảo") },
+        { text: "Giá phòng không đúng", onPress: () => sendReport("Sai giá") },
+        { text: "Hủy", style: "cancel" },
+      ]
+    );
+  };
+
+  const sendReport = (reason: string) => {
+    Alert.alert("Cảm ơn bạn", `Báo cáo (${reason}) đã được gửi đến ban quản trị.`);
+  };
+
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={onBack}>
-          <Text style={styles.back}>‹</Text>
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chi tiết bài đăng</Text>
-        <Text style={styles.headerAction}>♡</Text>
-      </View>
-      <ScrollView>
-        <Image source={{ uri: post.imageUrl }} style={styles.hero} />
-        <View style={styles.content}>
-          <View style={styles.tagRow}>
-            <Text style={styles.tag}>{post.badge}</Text>
-            {post.isVerifiedHost && (
-              <Text style={styles.verified}>✓ Uy tín</Text>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+        {/* 1. KHU VỰC HÌNH ẢNH BANNER + NÚT CHỨC NĂNG FLOATING */}
+        <View style={styles.imageHeaderContainer}>
+          <Image
+            source={{ uri: MOCK_POST.images[currentImgIndex] }}
+            style={styles.mainImage}
+            resizeMode="cover"
+          />
+
+          {/* Tag loại tin (VD: CHO THUÊ / Ở GHÉP) */}
+          <View style={styles.postTypeBadge}>
+            <Text style={styles.postTypeBadgeText}>{MOCK_POST.postTypeLabel}</Text>
+          </View>
+
+          {/* Nút Back (Góc trái) */}
+          <TouchableOpacity style={[styles.circleBtn, styles.backBtn]} onPress={onBack}>
+            <MaterialIcons name="arrow-back" size={22} color="#131b2e" />
+          </TouchableOpacity>
+
+          {/* Nhóm nút Share & Lưu (Góc phải) */}
+          <View style={styles.topRightActions}>
+            <TouchableOpacity style={styles.circleBtn} onPress={handleShare}>
+              <MaterialIcons name="share" size={20} color="#131b2e" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.circleBtn} onPress={() => setIsSaved(!isSaved)}>
+              <MaterialIcons
+                name={isSaved ? "bookmark" : "bookmark-border"}
+                size={22}
+                color={isSaved ? "#00685f" : "#131b2e"}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Nút Điều hướng Next / Prev Ảnh */}
+          {currentImgIndex > 0 && (
+            <TouchableOpacity style={[styles.navArrowBtn, styles.prevBtn]} onPress={handlePrevImage}>
+              <MaterialIcons name="chevron-left" size={28} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+
+          {currentImgIndex < MOCK_POST.images.length - 1 && (
+            <TouchableOpacity style={[styles.navArrowBtn, styles.nextBtn]} onPress={handleNextImage}>
+              <MaterialIcons name="chevron-right" size={28} color="#ffffff" />
+            </TouchableOpacity>
+          )}
+
+          {/* Chỉ số ảnh (Ví dụ: 2/6) */}
+          <View style={styles.imageCounterBadge}>
+            <MaterialIcons name="photo-camera" size={14} color="#ffffff" />
+            <Text style={styles.imageCounterText}>
+              {currentImgIndex + 1}/{MOCK_POST.images.length}
+            </Text>
+          </View>
+        </View>
+
+        {/* 2. NỘI DUNG CHÍNH BÀI ĐĂNG */}
+        <View style={styles.contentContainer}>
+          {/* Giá & Thời gian */}
+          <View style={styles.priceRow}>
+            <Text style={styles.priceText}>{MOCK_POST.price}</Text>
+            <Text style={styles.timeText}>{MOCK_POST.createdAt}</Text>
+          </View>
+
+          {/* Tiêu đề */}
+          <Text style={styles.titleText}>{MOCK_POST.title}</Text>
+
+          {/* Địa chỉ & Trường lân cận */}
+          <View style={styles.locationContainer}>
+            <View style={styles.iconInfoRow}>
+              <MaterialIcons name="place" size={18} color="#00685f" />
+              <Text style={styles.locationText}>{MOCK_POST.address}</Text>
+            </View>
+            <View style={styles.iconInfoRow}>
+              <MaterialIcons name="school" size={18} color="#0058be" />
+              <Text style={styles.schoolText}>{MOCK_POST.nearestSchool}</Text>
+            </View>
+          </View>
+
+          {/* 3. THÔNG TIN NGƯỜI ĐĂNG & TRẠNG THÁI XÁC THỰC */}
+          <View style={styles.authorCard}>
+            <Image source={{ uri: MOCK_POST.author.avatar }} style={styles.avatar} />
+            <View style={styles.authorDetails}>
+              <View style={styles.authorNameRow}>
+                <Text style={styles.authorName}>{MOCK_POST.author.name}</Text>
+                {MOCK_POST.author.isVerified && (
+                  <View style={styles.verifiedBadge}>
+                    <MaterialIcons name="verified" size={14} color="#00685f" />
+                    <Text style={styles.verifiedText}>Đã xác minh</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.authorSubText}>Tham gia: {MOCK_POST.author.joinedDate}</Text>
+            </View>
+          </View>
+
+          {/* 4. MÔ TẢ CHI TIẾT */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionTitle}>Mô tả phòng trọ</Text>
+            <Text style={styles.descriptionText}>{MOCK_POST.description}</Text>
+          </View>
+
+          {/* 5. VỊ TRÍ TRÊN BẢN ĐỒ (KHUNG MAP BẮT SỰ KIỆN NHẤN LÀ HIỆN) */}
+          <View style={styles.sectionBlock}>
+            <Text style={styles.sectionTitle}>Vị trí & Khu vực</Text>
+            {!showMap ? (
+              <TouchableOpacity style={styles.mapPlaceholder} onPress={() => setShowMap(true)}>
+                <MaterialIcons name="map" size={36} color="#00685f" />
+                <Text style={styles.mapPlaceholderText}>Nhấn để xem bản đồ khu vực phòng trọ</Text>
+                <Text style={styles.mapSubText}>Vị trí chính xác sẽ được bảo mật bán kính ~100m</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.activeMapContainer}>
+                {/* Giả lập khung Map view */}
+                <View style={styles.mockMapView}>
+                  <MaterialIcons name="location-on" size={40} color="#BA1A1A" />
+                  <Text style={styles.mockMapPinText}>Khu vực phòng trọ</Text>
+                </View>
+                <TouchableOpacity style={styles.externalMapBtn} onPress={handleOpenExternalMap}>
+                  <MaterialIcons name="directions" size={18} color="#00685f" />
+                  <Text style={styles.externalMapBtnText}>Mở trong Google Maps</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
-          <Text style={styles.title}>{post.title}</Text>
-          <Text style={styles.price}>{post.price}</Text>
-          <Text style={styles.address}>⌖ {post.address}</Text>
-          <View style={styles.rule} />
-          <Text style={styles.sectionTitle}>Thông tin phòng</Text>
-          <View style={styles.features}>
-            <Text style={styles.feature}>⌂ Nội thất cơ bản</Text>
-            <Text style={styles.feature}>◉ Wifi miễn phí</Text>
-            <Text style={styles.feature}>▣ Chỗ để xe</Text>
-          </View>
-          <View style={styles.host}>
-            <View style={styles.hostAvatar}>
-              <Text style={styles.hostInitial}>H</Text>
+
+          {/* 6. LƯỢT TIÊU CỰC / TÍCH CỰC & NÚT BÁO CÁO */}
+          <View style={styles.reactionRow}>
+            <View style={styles.likeDislikeGroup}>
+              <TouchableOpacity
+                style={[styles.reactionBtn, userReaction === "like" && styles.activeLikeBtn]}
+                onPress={handleLike}
+              >
+                <MaterialIcons
+                  name="thumb-up"
+                  size={18}
+                  color={userReaction === "like" ? "#00685f" : "#6d7a77"}
+                />
+                <Text style={[styles.reactionText, userReaction === "like" && styles.activeLikeText]}>
+                  {likes}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.reactionBtn, userReaction === "dislike" && styles.activeDislikeBtn]}
+                onPress={handleDislike}
+              >
+                <MaterialIcons
+                  name="thumb-down"
+                  size={18}
+                  color={userReaction === "dislike" ? "#ba1a1a" : "#6d7a77"}
+                />
+                <Text style={[styles.reactionText, userReaction === "dislike" && styles.activeDislikeText]}>
+                  {dislikes}
+                </Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.hostCopy}>
-              <Text style={styles.hostName}>
-                Chủ trọ HubStay <Text style={styles.check}>✓</Text>
-              </Text>
-              <Text style={styles.hostSub}>Đã tham gia cộng đồng 2 năm</Text>
-            </View>
-          </View>
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.secondary} onPress={onOpenChat}>
-              <Text style={styles.secondaryText}>Nhắn tin</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.primary}
-              onPress={() =>
-                Alert.alert("Gọi điện", "Đang mở ứng dụng điện thoại...")
-              }
-            >
-              <Text style={styles.primaryText}>Gọi ngay</Text>
+
+            {/* Nút báo cáo bài đăng */}
+            <TouchableOpacity style={styles.reportBtn} onPress={handleReport}>
+              <MaterialIcons name="flag" size={18} color="#ba1a1a" />
+              <Text style={styles.reportText}>Báo cáo tin</Text>
             </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onReport}>
-            <Text style={styles.report}>Báo cáo bài đăng</Text>
-          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* 7. FIXED BOTTOM ACTION BAR (CHAT & ĐẶT LỊCH) */}
+      <View style={styles.bottomDock}>
+        <TouchableOpacity
+          style={styles.chatBtn}
+          onPress={() => onNavigateToChat && onNavigateToChat(MOCK_POST.author.name)}
+        >
+          <MaterialIcons name="chat" size={20} color="#00685f" />
+          <Text style={styles.chatBtnText}>Nhắn tin</Text>
+        </TouchableOpacity>
+
+        {MOCK_POST.enableBooking && (
+          <TouchableOpacity
+            style={styles.bookingBtn}
+            onPress={() => onNavigateToBooking && onNavigateToBooking(MOCK_POST.id)}
+          >
+            <MaterialIcons name="event" size={20} color="#ffffff" />
+            <Text style={styles.bookingBtnText}>Đặt lịch xem phòng</Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F8F7" },
-  header: {
-    height: 60,
-    backgroundColor: "#FFF",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 18,
-    borderBottomWidth: 1,
-    borderColor: "#E2ECE9",
-  },
-  back: { fontSize: 34, color: "#20786B" },
-  headerTitle: {
+  container: {
     flex: 1,
-    textAlign: "center",
-    color: "#183B36",
-    fontSize: 17,
-    fontWeight: "800",
+    backgroundColor: "#faf8ff",
   },
-  headerAction: { fontSize: 27, color: "#E77D58" },
-  hero: { width: "100%", height: 235, backgroundColor: "#D9EFE9" },
-  content: { padding: 18 },
-  tagRow: { flexDirection: "row", gap: 7 },
-  tag: {
-    color: "#287466",
-    backgroundColor: "#E4F2EE",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+
+  /* Header Image Banner */
+  imageHeaderContainer: {
+    width: SCREEN_WIDTH,
+    height: 280,
+    position: "relative",
+    backgroundColor: "#131b2e",
+  },
+  mainImage: {
+    width: "100%",
+    height: "100%",
+  },
+  postTypeBadge: {
+    position: "absolute",
+    top: 44,
+    left: 60,
+    backgroundColor: "#00685f",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 6,
+  },
+  postTypeBadgeText: {
+    color: "#ffffff",
     fontSize: 11,
-    fontWeight: "800",
+    fontWeight: "700",
   },
-  verified: {
-    color: "#A45A35",
-    backgroundColor: "#FCE8DE",
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 6,
-    fontSize: 11,
-    fontWeight: "800",
+  circleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
-  title: {
-    color: "#183B36",
-    fontSize: 22,
-    lineHeight: 29,
-    fontWeight: "800",
-    marginTop: 12,
+  backBtn: {
+    position: "absolute",
+    top: 40,
+    left: 14,
   },
-  price: { color: "#20786B", fontSize: 20, fontWeight: "800", marginTop: 10 },
-  address: { color: "#78908B", marginTop: 7 },
-  rule: { height: 1, backgroundColor: "#DCE9E5", marginVertical: 20 },
-  sectionTitle: { color: "#183B36", fontSize: 16, fontWeight: "800" },
-  features: { flexDirection: "row", flexWrap: "wrap", gap: 9, marginTop: 12 },
-  feature: {
-    color: "#52726A",
-    backgroundColor: "#FFF",
-    padding: 10,
-    borderRadius: 9,
+  topRightActions: {
+    position: "absolute",
+    top: 40,
+    right: 14,
+    flexDirection: "row",
+    gap: 8,
   },
-  host: {
-    backgroundColor: "#FFF",
-    borderRadius: 14,
-    padding: 13,
+  navArrowBtn: {
+    position: "absolute",
+    top: "45%",
+    backgroundColor: "rgba(0,0,0,0.4)",
+    borderRadius: 20,
+    padding: 4,
+  },
+  prevBtn: {
+    left: 10,
+  },
+  nextBtn: {
+    right: 10,
+  },
+  imageCounterBadge: {
+    position: "absolute",
+    bottom: 12,
+    right: 14,
+    backgroundColor: "rgba(0, 0, 0, 0.65)",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     flexDirection: "row",
     alignItems: "center",
-    marginTop: 20,
+    gap: 4,
   },
-  hostAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    backgroundColor: "#FCE8DE",
+  imageCounterText: {
+    color: "#ffffff",
+    fontSize: 12,
+    fontWeight: "600",
+  },
+
+  /* Main Body Content */
+  contentContainer: {
+    padding: 16,
+  },
+  priceRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  priceText: {
+    fontSize: 22,
+    fontWeight: "800",
+    color: "#00685f",
+  },
+  timeText: {
+    fontSize: 12,
+    color: "#6d7a77",
+  },
+  titleText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#131b2e",
+    lineHeight: 24,
+    marginBottom: 12,
+  },
+
+  /* Location Info */
+  locationContainer: {
+    backgroundColor: "#ffffff",
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#e2e7ff",
+    gap: 8,
+    marginBottom: 16,
+  },
+  iconInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  locationText: {
+    fontSize: 13,
+    color: "#131b2e",
+    flex: 1,
+    fontWeight: "500",
+  },
+  schoolText: {
+    fontSize: 13,
+    color: "#0058be",
+    flex: 1,
+    fontWeight: "600",
+  },
+
+  /* Author Card */
+  authorCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ffffff",
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e7ff",
+    marginBottom: 16,
+  },
+  avatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+  },
+  authorDetails: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  authorNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  authorName: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#131b2e",
+  },
+  verifiedBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e6f4f2",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 10,
+    gap: 2,
+  },
+  verifiedText: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#00685f",
+  },
+  authorSubText: {
+    fontSize: 11,
+    color: "#6d7a77",
+    marginTop: 2,
+  },
+
+  /* Section Blocks */
+  sectionBlock: {
+    backgroundColor: "#ffffff",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e7ff",
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "700",
+    color: "#131b2e",
+    marginBottom: 10,
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: "#3d4947",
+    lineHeight: 22,
+  },
+
+  /* Map Container */
+  mapPlaceholder: {
+    height: 120,
+    backgroundColor: "#f2f3ff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#adc6ff",
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+  },
+  mapPlaceholderText: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#00685f",
+    marginTop: 6,
+  },
+  mapSubText: {
+    fontSize: 11,
+    color: "#6d7a77",
+    marginTop: 2,
+  },
+  activeMapContainer: {
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  mockMapView: {
+    height: 140,
+    backgroundColor: "#e0f2fe",
     alignItems: "center",
     justifyContent: "center",
   },
-  hostInitial: { color: "#A45A35", fontWeight: "800", fontSize: 18 },
-  hostCopy: { marginLeft: 11 },
-  hostName: { color: "#183B36", fontWeight: "800" },
-  check: { color: "#20786B" },
-  hostSub: { color: "#78908B", fontSize: 12, marginTop: 4 },
-  actions: { flexDirection: "row", gap: 10, marginTop: 18 },
-  secondary: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#20786B",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  secondaryText: { color: "#20786B", fontWeight: "800" },
-  primary: {
-    flex: 1,
-    backgroundColor: "#20786B",
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  primaryText: { color: "#FFF", fontWeight: "800" },
-  report: {
-    color: "#A45A35",
-    textAlign: "center",
-    marginVertical: 20,
+  mockMapPinText: {
     fontSize: 12,
-    textDecorationLine: "underline",
+    fontWeight: "700",
+    color: "#BA1A1A",
+    marginTop: 4,
+  },
+  externalMapBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    backgroundColor: "#f4fffc",
+    gap: 6,
+    borderTopWidth: 1,
+    borderTopColor: "#e2e7ff",
+  },
+  externalMapBtnText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#00685f",
+  },
+
+  /* Reactions & Report */
+  reactionRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+    paddingHorizontal: 4,
+  },
+  likeDislikeGroup: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  reactionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#ffffff",
+    borderWidth: 1,
+    borderColor: "#bcc9c6",
+  },
+  activeLikeBtn: {
+    borderColor: "#00685f",
+    backgroundColor: "#e6f4f2",
+  },
+  activeDislikeBtn: {
+    borderColor: "#ba1a1a",
+    backgroundColor: "#fde8e8",
+  },
+  reactionText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#6d7a77",
+  },
+  activeLikeText: {
+    color: "#00685f",
+  },
+  activeDislikeText: {
+    color: "#ba1a1a",
+  },
+  reportBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+  },
+  reportText: {
+    fontSize: 12,
+    color: "#ba1a1a",
+    fontWeight: "600",
+  },
+
+  /* Bottom Actions Dock */
+  bottomDock: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: "#ffffff",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#eaedff",
+    flexDirection: "row",
+    gap: 12,
+  },
+  chatBtn: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    borderColor: "#00685f",
+    backgroundColor: "#f4fffc",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  chatBtnText: {
+    color: "#00685f",
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  bookingBtn: {
+    flex: 1.4,
+    height: 46,
+    borderRadius: 10,
+    backgroundColor: "#00685f",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+  },
+  bookingBtnText: {
+    color: "#ffffff",
+    fontSize: 14,
+    fontWeight: "700",
   },
 });

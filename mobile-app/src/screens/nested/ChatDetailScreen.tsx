@@ -62,7 +62,7 @@ export default function ChatDetailScreen({ onBack, post }: Props) {
           value={message}
           onChangeText={setMessage}
           placeholder="Nhập tin nhắn..."
-          placeholderTextColor="#A2B3AF"
+          placeholderTextColor="#9AAAB0"
           style={styles.input}
         />
         <TouchableOpacity onPress={send} style={styles.send}>
@@ -73,27 +73,27 @@ export default function ChatDetailScreen({ onBack, post }: Props) {
   );
 }
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F5F8F7" },
+  container: { flex: 1, backgroundColor: "#F7F9FA" },
   header: {
     padding: 14,
     backgroundColor: "#FFF",
     flexDirection: "row",
     alignItems: "center",
     borderBottomWidth: 1,
-    borderColor: "#DCE9E5",
+    borderColor: "#DCE5E8",
   },
-  back: { fontSize: 32, color: "#20786B" },
+  back: { fontSize: 32, color: "#547A8A" },
   headerCopy: { marginLeft: 12 },
-  name: { color: "#183B36", fontSize: 16, fontWeight: "800" },
-  online: { color: "#5C8A80", fontSize: 11, marginTop: 3 },
+  name: { color: "#263B43", fontSize: 16, fontWeight: "800" },
+  online: { color: "#6B8FA3", fontSize: 11, marginTop: 3 },
   post: {
     margin: 14,
-    backgroundColor: "#E4F2EE",
+    backgroundColor: "#E8F0F3",
     borderRadius: 12,
     padding: 12,
   },
-  postLabel: { color: "#5C8A80", fontSize: 10, fontWeight: "800" },
-  postTitle: { color: "#287466", fontWeight: "700", marginTop: 5 },
+  postLabel: { color: "#6B8FA3", fontSize: 10, fontWeight: "800" },
+  postTitle: { color: "#547A8A", fontWeight: "700", marginTop: 5 },
   messages: { padding: 15, flexGrow: 1, justifyContent: "flex-end" },
   bubble: { maxWidth: "78%", padding: 12, borderRadius: 15, marginTop: 9 },
   theirs: {
@@ -102,11 +102,11 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 3,
   },
   mine: {
-    backgroundColor: "#20786B",
+    backgroundColor: "#6B8FA3",
     alignSelf: "flex-end",
     borderBottomRightRadius: 3,
   },
-  bubbleText: { color: "#38564F", lineHeight: 19 },
+  bubbleText: { color: "#445B63", lineHeight: 19 },
   mineText: { color: "#FFF" },
   composer: {
     backgroundColor: "#FFF",
@@ -114,15 +114,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     borderTopWidth: 1,
-    borderColor: "#DCE9E5",
+    borderColor: "#DCE5E8",
   },
   input: {
     flex: 1,
-    backgroundColor: "#F5F8F7",
+    backgroundColor: "#F7F9FA",
     borderRadius: 20,
     paddingHorizontal: 15,
     paddingVertical: 10,
-    color: "#183B36",
+    color: "#263B43",
   },
   send: {
     width: 40,
