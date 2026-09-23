@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
+  Platform
 } from "react-native";
 import { StickyVerificationBanner } from "../components/StickyVerificationBanner";
 
@@ -18,6 +19,8 @@ import ProfileScreen from "../screens/main/ProfileScreen";
 interface Props {
   onVerifyPress: () => void;
   onOpenManageAppointments: () => void;
+  onOpenTransactionHistory: () => void;
+  onOpenPaymentSimulation: () => void;
   onSelectPost: (post: any) => void;
   onOpenChat: () => void;
   onOpenCreate: () => void;
@@ -26,6 +29,8 @@ interface Props {
 export const MainTabNavigator: React.FC<Props> = ({
   onVerifyPress,
   onOpenManageAppointments,
+  onOpenTransactionHistory,
+  onOpenPaymentSimulation,
   onSelectPost,
   onOpenChat,
   onOpenCreate,
@@ -36,13 +41,11 @@ export const MainTabNavigator: React.FC<Props> = ({
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 1. Dải Banner Xác Thực Cố Định */}
       <StickyVerificationBanner
         isVerified={false}
         onVerifyPress={onVerifyPress}
       />
 
-      {/* 2. Vùng Nội Dung Thay Đổi Theo Tab */}
       <View style={styles.body}>
         {currentTab === "HOME" && <HomeScreen onSelectPost={onSelectPost} />}
         {currentTab === "CHAT" && <ChatListScreen onOpenChat={onOpenChat} />}
@@ -55,11 +58,14 @@ export const MainTabNavigator: React.FC<Props> = ({
           />
         )}
         {currentTab === "PROFILE" && (
-          <ProfileScreen onVerifyPress={onVerifyPress} />
+          <ProfileScreen
+            onVerifyPress={onVerifyPress}
+            onOpenTransactionHistory={onOpenTransactionHistory}
+            onOpenPaymentSimulation={onOpenPaymentSimulation}
+          />
         )}
       </View>
 
-      {/* 3. Bottom Tab Bar 5 Mục */}
       <View style={styles.tabBar}>
         <TouchableOpacity
           style={styles.tabItem}
@@ -99,7 +105,6 @@ export const MainTabNavigator: React.FC<Props> = ({
           </Text>
         </TouchableOpacity>
 
-        {/* Nút [+] Đăng tin Nổi Bật */}
         <TouchableOpacity
           style={styles.plusTabItem}
           onPress={() => setCurrentTab("CREATE")}
@@ -171,16 +176,31 @@ const styles = StyleSheet.create({
   tabIcon: { fontSize: 18, color: "#6B7280" },
   tabLabel: { fontSize: 11, color: "#6B7280", marginTop: 2 },
   activeText: { color: "#6B8FA3", fontWeight: "bold" },
-  plusTabItem: { flex: 1, alignItems: "center", justifyContent: "center" },
+  plusTabItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   plusButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: "#00685f",
     justifyContent: "center",
     alignItems: "center",
-    marginTop: -15,
-    elevation: 4,
+    marginTop: -26, // Đẩy nút nhô lên đúng nửa chiều cao nút
+    // Đổ bóng cho iOS
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    // Đổ bóng cho Android
+    elevation: 6,
   },
-  plusIcon: { color: "#FFF", fontSize: 24, fontWeight: "bold" },
+  plusIcon: { 
+    color: "#FFF", 
+    fontSize: 28, 
+    fontWeight: "bold",
+    marginTop: Platform.OS === "ios" ? -2 : -4, 
+  },
 });

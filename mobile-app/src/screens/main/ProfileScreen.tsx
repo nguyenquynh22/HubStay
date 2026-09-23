@@ -1,5 +1,5 @@
 // src/screens/main/ProfileScreen.tsx
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,20 +8,50 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
+  ActivityIndicator,
+  RefreshControl,
 } from "react-native";
+import { getUserById } from "../../services/api";
 
 interface Props {
   onVerifyPress?: () => void;
+  onOpenTransactionHistory?: () => void;
+  onOpenPaymentSimulation?: () => void;
+  userId?: number;
 }
 
-export default function ProfileScreen({ onVerifyPress }: Props) {
-  // Mock dữ liệu người dùng
-  const user = {
-    name: "Nguyễn Thị Như Quỳnh",
-    role: "Sinh viên UTEHY",
-    email: "quynhntn@gmail.com",
-    isVerified: false, // Trạng thái xác thực
-    avatarUrl: "https://via.placeholder.com/150/00B14F/ffffff?text=User",
+export default function ProfileScreen({
+  onVerifyPress,
+  onOpenTransactionHistory,
+  onOpenPaymentSimulation,
+  userId = 1,
+}: Props) {
+  const [user, setUser] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  const fetchUserProfile = async () => {
+    try {
+      setLoading(true);
+      const res = await getUserById(userId);
+      if (res.success && res.data) {
+        setUser(res.data);
+      }
+    } catch (error) {
+      console.error("Lỗi tải thông tin cá nhân:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, [userId]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchUserProfile();
   };
 
   const handleLogout = () => {
@@ -35,18 +65,34 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
     ]);
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      {/* 1. Header Thông Tin Cá Nhân */}
-      <View style={styles.profileHeader}>
-        <Image source={{ uri: user.avatarUrl }} style={styles.avatar} />
-        <Text style={styles.userName}>{user.name}</Text>
-        <Text style={styles.userRole}>{user.role}</Text>
-        <Text style={styles.userEmail}>{user.email}</Text>
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6B8FA3" />
+      </View>
+    );
+  }
 
-        {/* Badge Trạng Thái Xác Thực */}
+  const isVerified = user?.is_verified === 1;
+  const avatarUri =
+    user?.avatar_url ||
+    "https://via.placeholder.com/150/00B14F/ffffff?text=User";
+
+  return (
+    <ScrollView
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <View style={styles.profileHeader}>
+        <Image source={{ uri: avatarUri }} style={styles.avatar} />
+        <Text style={styles.userName}>{user?.full_name || "Người dùng"}</Text>
+        <Text style={styles.userRole}>{user?.role || "STUDENT"}</Text>
+        <Text style={styles.userEmail}>{user?.email || ""}</Text>
+
         <View style={styles.badgeContainer}>
-          {user.isVerified ? (
+          {isVerified ? (
             <View style={[styles.badge, styles.verifiedBadge]}>
               <Text style={styles.verifiedBadgeText}>
                 ✓ Tài khoản đã xác thực Uy tín
@@ -62,8 +108,7 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
         </View>
       </View>
 
-      {/* 2. Banner Kích Hoạt Xác Thực Fast-Track */}
-      {!user.isVerified && (
+      {!isVerified && (
         <TouchableOpacity style={styles.verifyBanner} onPress={onVerifyPress}>
           <View style={styles.verifyBannerContent}>
             <Text style={styles.verifyBannerTitle}>
@@ -78,7 +123,6 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
         </TouchableOpacity>
       )}
 
-      {/* 3. Danh Sách Tùy Chọn & Cài Đặt */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tài khoản & Bảo mật</Text>
 
@@ -89,6 +133,16 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
 
         <TouchableOpacity style={styles.menuItem} onPress={onVerifyPress}>
           <Text style={styles.menuText}>🪪 Yêu cầu xác thực (CCCD/Thẻ SV)</Text>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem} onPress={onOpenTransactionHistory}>
+          <Text style={styles.menuText}>💳 Lịch sử giao dịch</Text>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.menuItem} onPress={onOpenPaymentSimulation}>
+          <Text style={styles.menuText}>🧾 Mô phỏng thanh toán</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
@@ -112,14 +166,11 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuText}>
-            📄 Điều khoản & Chính sách bảo mật
-          </Text>
+          <Text style={styles.menuText}>📄 Điều khoản & Chính sách bảo mật</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 4. Nút Đăng Xuất */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
         <Text style={styles.logoutText}>Đăng xuất</Text>
       </TouchableOpacity>
@@ -131,6 +182,7 @@ export default function ProfileScreen({ onVerifyPress }: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F4F6" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   profileHeader: {
     backgroundColor: "#FFF",
     padding: 20,
@@ -153,7 +205,6 @@ const styles = StyleSheet.create({
   verifiedBadgeText: { color: "#16A34A", fontSize: 12, fontWeight: "bold" },
   unverifiedBadge: { backgroundColor: "#FEF3C7" },
   unverifiedBadgeText: { color: "#B45309", fontSize: 12, fontWeight: "bold" },
-
   verifyBanner: {
     margin: 14,
     backgroundColor: "#E8F0F3",
@@ -173,7 +224,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     marginLeft: 8,
   },
-
   section: {
     backgroundColor: "#FFF",
     marginTop: 12,
@@ -200,7 +250,6 @@ const styles = StyleSheet.create({
   },
   menuText: { fontSize: 14, color: "#374151" },
   menuArrow: { fontSize: 16, color: "#9CA3AF" },
-
   logoutBtn: {
     margin: 16,
     backgroundColor: "#FEE2E2",

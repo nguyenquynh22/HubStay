@@ -1,4 +1,3 @@
-// App.tsx
 import React, { useState } from "react";
 import { StatusBar } from "expo-status-bar";
 import { MainTabNavigator } from "./src/navigation/MainTabNavigator";
@@ -7,6 +6,8 @@ import ManageAppointmentsScreen from "./src/screens/nested/ManageAppointmentsScr
 import PostDetailScreen from "./src/screens/nested/PostDetailScreen";
 import ChatDetailScreen from "./src/screens/nested/ChatDetailScreen";
 import ReportPostScreen from "./src/screens/nested/ReportPostScreen";
+import TransactionHistoryScreen from "./src/screens/nested/TransactionHistoryScreen";
+import PaymentSimulationScreen from "./src/screens/nested/PaymentSimulationScreen";
 
 export default function App() {
   const [currentNestedScreen, setCurrentNestedScreen] = useState<string | null>(
@@ -18,7 +19,6 @@ export default function App() {
     <>
       <StatusBar style="auto" />
 
-      {/* Chuyển Màn hình Lồng Sâu (Nested Stack) */}
       {currentNestedScreen === "VERIFY" ? (
         <IdentityVerificationScreen
           onBack={() => setCurrentNestedScreen(null)}
@@ -41,12 +41,21 @@ export default function App() {
         <ReportPostScreen
           onBack={() => setCurrentNestedScreen("POST_DETAIL")}
         />
+      ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
+        <TransactionHistoryScreen onBack={() => setCurrentNestedScreen(null)} />
+      ) : currentNestedScreen === "PAYMENT_SIMULATION" ? (
+        <PaymentSimulationScreen onBack={() => setCurrentNestedScreen(null)} />
       ) : (
-        /* Màn Hình 5 Tab Chính */
         <MainTabNavigator
           onVerifyPress={() => setCurrentNestedScreen("VERIFY")}
           onOpenManageAppointments={() =>
             setCurrentNestedScreen("APPOINTMENTS")
+          }
+          onOpenTransactionHistory={() =>
+            setCurrentNestedScreen("TRANSACTION_HISTORY")
+          }
+          onOpenPaymentSimulation={() =>
+            setCurrentNestedScreen("PAYMENT_SIMULATION")
           }
           onSelectPost={(post) => {
             setSelectedPost(post);

@@ -1,4 +1,3 @@
-// src/screens/main/HomeScreen.tsx
 import React from "react";
 import {
   View,
@@ -11,7 +10,7 @@ import {
   StatusBar,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { MOCK_POSTS, Post } from "../../types/mockData";
+import { getNearbyPosts, Post } from "../../types/mockData";
 
 interface Props {
   onSelectPost: (post: Post) => void;
@@ -19,27 +18,23 @@ interface Props {
 }
 
 export default function HomeScreen({ onSelectPost, onOpenNotifications }: Props) {
+  const nearbyPosts = getNearbyPosts(10);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
 
-      {/* 1. BRAND HEADER (Logo, Tên App, Badge SV & Icon Thông Báo) */}
       <View style={styles.topAppBar}>
         <View style={styles.brandContainer}>
           <View style={styles.brandTitleRow}>
-            {/* Logo Icon */}
             <MaterialIcons name="roofing" size={28} color="#00685f" />
-            
-            {/* Tên App */}
             <Text style={styles.brandName}>HubStay</Text>
-            
           </View>
           <Text style={styles.brandSlogan}>Tìm trọ & Ở ghép sinh viên</Text>
         </View>
 
-        {/* Nút Notification có badge đỏ */}
-        <TouchableOpacity 
-          style={styles.notificationBtn} 
+        <TouchableOpacity
+          style={styles.notificationBtn}
           onPress={onOpenNotifications}
           activeOpacity={0.7}
         >
@@ -48,7 +43,6 @@ export default function HomeScreen({ onSelectPost, onOpenNotifications }: Props)
         </TouchableOpacity>
       </View>
 
-      {/* 2. CHỌN TRƯỜNG / KHU VỰC */}
       <View style={styles.locationSelectorContainer}>
         <TouchableOpacity style={styles.locationSelector} activeOpacity={0.8}>
           <View style={styles.locationLeft}>
@@ -65,20 +59,18 @@ export default function HomeScreen({ onSelectPost, onOpenNotifications }: Props)
         </TouchableOpacity>
       </View>
 
-      {/* 3. SEARCH BAR */}
       <View style={styles.searchContainer}>
         <TouchableOpacity style={styles.searchBar} activeOpacity={0.9}>
           <MaterialIcons name="search" size={20} color="#6d7a77" style={styles.searchIcon} />
-          <Text style={styles.searchPlaceholder}>Tìm theo tên trường, bán kính 2km...</Text>
+          <Text style={styles.searchPlaceholder}>Tìm theo trường hoặc bán kính 10km...</Text>
           <View style={styles.tuneBtn}>
             <MaterialIcons name="tune" size={18} color="#6d7a77" />
           </View>
         </TouchableOpacity>
       </View>
 
-      {/* 4. LIST BÀI ĐĂNG */}
       <FlatList
-        data={MOCK_POSTS}
+        data={nearbyPosts}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
@@ -88,12 +80,9 @@ export default function HomeScreen({ onSelectPost, onOpenNotifications }: Props)
             activeOpacity={0.85}
             onPress={() => onSelectPost(item)}
           >
-            {/* Ảnh thumbnail */}
             <Image source={{ uri: item.imageUrl }} style={styles.cardImage} />
 
-            {/* Nội dung bài đăng */}
             <View style={styles.cardContent}>
-              {/* Badge loại tin & xác minh */}
               <View style={styles.badgeRow}>
                 {item.badge && <Text style={styles.badge}>{item.badge}</Text>}
                 {item.isVerifiedHost && (
@@ -104,15 +93,19 @@ export default function HomeScreen({ onSelectPost, onOpenNotifications }: Props)
                 )}
               </View>
 
-              {/* Tiêu đề */}
               <Text style={styles.title} numberOfLines={2}>
                 {item.title}
               </Text>
 
-              {/* Giá */}
               <Text style={styles.price}>{item.price}</Text>
 
-              {/* Địa chỉ */}
+              <View style={styles.distancePill}>
+                <MaterialIcons name="directions-walk" size={12} color="#00685f" />
+                <Text style={styles.distanceText}>
+                  Cách trường {item.distanceKm?.toFixed(1)} km
+                </Text>
+              </View>
+
               <View style={styles.addressRow}>
                 <MaterialIcons name="place" size={14} color="#6B7280" />
                 <Text style={styles.address} numberOfLines={1}>
@@ -132,8 +125,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F3F4F6",
   },
-
-  /* Top App Bar */
   topAppBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -156,18 +147,6 @@ const styles = StyleSheet.create({
     color: "#00685f",
     marginLeft: 6,
     letterSpacing: -0.5,
-  },
-  svBadge: {
-    backgroundColor: "#89f5e7",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginLeft: 6,
-  },
-  svBadgeText: {
-    fontSize: 10,
-    fontWeight: "700",
-    color: "#00201d",
   },
   brandSlogan: {
     fontSize: 11,
@@ -195,8 +174,6 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#ffffff",
   },
-
-  /* Location Selector */
   locationSelectorContainer: {
     paddingHorizontal: 16,
     paddingBottom: 8,
@@ -240,8 +217,6 @@ const styles = StyleSheet.create({
     color: "#00685f",
     marginRight: 2,
   },
-
-  /* Search Header */
   searchContainer: {
     paddingHorizontal: 16,
     paddingVertical: 10,
@@ -257,91 +232,107 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  searchIcon: {
-    marginRight: 8,
-  },
+  searchIcon: { marginRight: 8 },
   searchPlaceholder: {
     flex: 1,
-    fontSize: 13,
-    color: "#6B7280",
+    fontSize: 12,
+    color: "#6d7a77",
   },
   tuneBtn: {
-    padding: 2,
+    marginLeft: 8,
+    backgroundColor: "#ffffff",
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
-
-  /* Item List */
   listContent: {
-    padding: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
   },
   card: {
-    backgroundColor: "#FFF",
-    borderRadius: 12,
-    marginBottom: 12,
+    backgroundColor: "#ffffff",
+    borderRadius: 14,
     overflow: "hidden",
-    flexDirection: "row",
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  cardImage: { 
-    width: 110, 
-    height: 110,
-    resizeMode: "cover",
+  cardImage: {
+    width: "100%",
+    height: 180,
   },
-  cardContent: { 
-    flex: 1, 
-    padding: 10,
-    justifyContent: "space-between",
+  cardContent: {
+    padding: 12,
   },
   badgeRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 6,
+    flexWrap: "wrap",
+    marginBottom: 6,
   },
   badge: {
-    backgroundColor: "#E0F2FE",
-    color: "#0369A1",
+    backgroundColor: "#EAF5F1",
+    color: "#00685f",
     fontSize: 10,
-    fontWeight: "bold",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+    fontWeight: "700",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginRight: 6,
   },
   verifiedTag: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#DCFCE7",
+    backgroundColor: "#E8F5E9",
     paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    gap: 3,
+    paddingVertical: 3,
+    borderRadius: 10,
   },
   verifiedText: {
-    color: "#15803D",
+    color: "#166534",
     fontSize: 10,
-    fontWeight: "bold",
+    fontWeight: "700",
+    marginLeft: 4,
   },
-  title: { 
-    fontSize: 14, 
-    fontWeight: "bold", 
-    color: "#1F2937",
-    marginTop: 2,
+  title: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#131b2e",
+    marginBottom: 4,
   },
   price: {
-    fontSize: 14,
+    fontSize: 16,
+    fontWeight: "800",
     color: "#00685f",
-    fontWeight: "bold",
+    marginBottom: 6,
+  },
+  distancePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 10,
+    alignSelf: "flex-start",
+    marginBottom: 8,
+  },
+  distanceText: {
+    color: "#0f766e",
+    fontSize: 11,
+    fontWeight: "700",
+    marginLeft: 4,
   },
   addressRow: {
     flexDirection: "row",
     alignItems: "center",
   },
-  address: { 
-    fontSize: 12, 
-    color: "#6B7280",
-    marginLeft: 2,
+  address: {
+    fontSize: 12,
+    color: "#4B5563",
+    marginLeft: 6,
     flex: 1,
   },
 });
+ 

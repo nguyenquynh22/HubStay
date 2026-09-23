@@ -4,10 +4,21 @@ const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
 
+const http = require('http');
+const { Server } = require('socket.io');
+
 const db = require("./common/db"); // MySQL TiDB
 const mongoDb = require("./common/mongo"); // MongoDB Chat
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server);
+
+// Kết nối MongoDB
+mongoDb();
+
+// Khởi tạo Socket.IO
+require('./sockets/chat.socket')(io);
 
 app.use(morgan("dev"));
 app.use(cors());
@@ -25,6 +36,14 @@ const postsRouter = require("./routes/posts.route");
 const saved_postsRouter = require("./routes/saved_posts.route");
 const usersRouter = require("./routes/users.route");
 const verification_requestsRouter = require("./routes/verification_requests.route");
+
+const rentalRequestsRoute = require("./routes/rental_requests.route");
+const transactionsRoute = require("./routes/transactions.route");
+const subscriptionsRoute = require("./routes/subscriptions.route");
+
+app.use("/api/rental-requests", rentalRequestsRoute);
+app.use("/api/transactions", transactionsRoute);
+app.use("/api/subscriptions", subscriptionsRoute);
 
 // Map Endpoint APIs
 app.use("/api/appointments", appointmentsRouter);
