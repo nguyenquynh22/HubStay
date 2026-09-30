@@ -10,8 +10,9 @@ import {
   Alert,
   ActivityIndicator,
   RefreshControl,
+  TextInput,
 } from "react-native";
-import { getUserById } from "../../services/api";
+import { getUserById, updateUser } from "../../services/api";
 
 interface Props {
   onVerifyPress?: () => void;
@@ -29,15 +30,27 @@ export default function ProfileScreen({
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
+  const [editing, setEditing] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [profileError, setProfileError] = useState("");
 
   const fetchUserProfile = async () => {
     try {
       setLoading(true);
+      setProfileError("");
       const res = await getUserById(userId);
       if (res.success && res.data) {
         setUser(res.data);
+        setEditName(res.data.full_name || "");
+        setEditPhone(res.data.phone || "");
+      } else {
+        setUser(null);
+        setProfileError(res.message || `Không tìm thấy người dùng #${userId}.`);
       }
     } catch (error) {
+      setUser(null);
+      setProfileError(`Không tải được hồ sơ người dùng #${userId}. Hãy kiểm tra địa chỉ API và kết nối máy chủ.`);
       console.error("Lỗi tải thông tin cá nhân:", error);
     } finally {
       setLoading(false);
@@ -52,6 +65,11 @@ export default function ProfileScreen({
   const onRefresh = () => {
     setRefreshing(true);
     fetchUserProfile();
+  };
+
+  const saveProfile = async () => {
+    try { await updateUser(userId, { full_name: editName.trim(), phone: editPhone.trim() || null }); setEditing(false); fetchUserProfile(); Alert.alert("Đã lưu", "Thông tin cá nhân đã được cập nhật."); }
+    catch (error: any) { Alert.alert("Không lưu được", error?.response?.data?.message || "Kiểm tra API và thử lại."); }
   };
 
   const handleLogout = () => {
@@ -73,7 +91,22 @@ export default function ProfileScreen({
     );
   }
 
+  if (!user) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.userName}>Không tải được hồ sơ</Text>
+        <Text style={styles.userEmail}>{profileError || `Người dùng #${userId}`}</Text>
+        <TouchableOpacity style={styles.saveButton} onPress={fetchUserProfile}>
+          <Text style={{ color: "white", fontWeight: "700" }}>Thử lại</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   const isVerified = user?.is_verified === 1;
+  const isVip =
+    user?.is_vip === 1 &&
+    (!user?.vip_expires_at || new Date(user.vip_expires_at) > new Date());
   const avatarUri =
     user?.avatar_url ||
     "https://via.placeholder.com/150/00B14F/ffffff?text=User";
@@ -90,16 +123,24 @@ export default function ProfileScreen({
         <Text style={styles.userName}>{user?.full_name || "Người dùng"}</Text>
         <Text style={styles.userRole}>{user?.role || "STUDENT"}</Text>
         <Text style={styles.userEmail}>{user?.email || ""}</Text>
+        <Text style={styles.userEmail}>Mã người dùng: {user?.user_id ?? userId}</Text>
 
         <View style={styles.badgeContainer}>
-          {isVerified ? (
-            <View style={[styles.badge, styles.verifiedBadge]}>
-              <Text style={styles.verifiedBadgeText}>
-                ✓ Tài khoản đã xác thực Uy tín
-              </Text>
-            </View>
-          ) : (
-            <View style={[styles.badge, styles.unverifiedBadge]}>
+          <View style={styles.badgeRow}>
+            {isVerified && (
+              <View style={[styles.badge, styles.verifiedBadge]}>
+                <Text style={styles.verifiedBadgeText}>✓ Đã xác thực</Text>
+              </View>
+            )}
+            {isVip && (
+              <View style={[styles.badge, styles.vipBadge]}>
+                <Text style={styles.vipBadgeText}>★ VIP</Text>
+              </View>
+            )}
+          </View>
+
+          {!isVerified && (
+            <View style={[styles.badge, styles.unverifiedBadge, styles.mt8]}>
               <Text style={styles.unverifiedBadgeText}>
                 ⚠️ Chưa xác thực Danh tính
               </Text>
@@ -108,7 +149,7 @@ export default function ProfileScreen({
         </View>
       </View>
 
-      {!isVerified && (
+      {user?.role !== "LANDLORD" && !isVerified && (
         <TouchableOpacity style={styles.verifyBanner} onPress={onVerifyPress}>
           <View style={styles.verifyBannerContent}>
             <Text style={styles.verifyBannerTitle}>
@@ -126,7 +167,7 @@ export default function ProfileScreen({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tài khoản & Bảo mật</Text>
 
-        <TouchableOpacity style={styles.menuItem}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => setEditing(!editing)}>
           <Text style={styles.menuText}>👤 Cập nhật thông tin cá nhân</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
@@ -136,21 +177,28 @@ export default function ProfileScreen({
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={onOpenTransactionHistory}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={onOpenTransactionHistory}
+        >
           <Text style={styles.menuText}>💳 Lịch sử giao dịch</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.menuItem} onPress={onOpenPaymentSimulation}>
+        {user?.role === "LANDLORD" && <TouchableOpacity style={styles.menuItem} onPress={onOpenPaymentSimulation}>
           <Text style={styles.menuText}>🧾 Mô phỏng thanh toán</Text>
           <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>
+        </TouchableOpacity>}
 
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>🔒 Đổi mật khẩu</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
       </View>
+
+      {editing && <View style={styles.section}><Text style={styles.sectionTitle}>Chỉnh sửa thông tin cá nhân</Text><TextInput style={styles.editInput} value={editName} onChangeText={setEditName} placeholder="Họ tên"/><TextInput style={styles.editInput} value={editPhone} onChangeText={setEditPhone} placeholder="Số điện thoại" keyboardType="phone-pad"/><TouchableOpacity style={styles.saveButton} onPress={saveProfile}><Text style={{ color: "white", fontWeight: "700" }}>Lưu thay đổi</Text></TouchableOpacity></View>}
+
+      {user?.role === "LANDLORD" && <View style={styles.section}><Text style={styles.sectionTitle}>Tài khoản chủ trọ</Text>{!isVerified ? <TouchableOpacity style={styles.saveButton} onPress={onVerifyPress}><Text style={{ color: "white", fontWeight: "700" }}>Xác thực tài khoản để mở VIP</Text></TouchableOpacity> : <TouchableOpacity style={styles.saveButton} onPress={onOpenPaymentSimulation}><Text style={{ color: "white", fontWeight: "700" }}>{isVip ? "Quản lý gói VIP" : "Đăng ký VIP miễn phí (dev)"}</Text></TouchableOpacity>}</View>}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ứng dụng & Hỗ trợ</Text>
@@ -166,7 +214,9 @@ export default function ProfileScreen({
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuText}>📄 Điều khoản & Chính sách bảo mật</Text>
+          <Text style={styles.menuText}>
+            📄 Điều khoản & Chính sách bảo mật
+          </Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
       </View>
@@ -199,12 +249,25 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   userEmail: { fontSize: 12, color: "#6B7280", marginTop: 2 },
-  badgeContainer: { marginTop: 10 },
-  badge: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20 },
+  badgeContainer: { marginTop: 10, alignItems: "center" },
+  badgeRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "center",
+  },
+  badge: {
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    marginHorizontal: 4,
+  },
   verifiedBadge: { backgroundColor: "#DCFCE7" },
   verifiedBadgeText: { color: "#16A34A", fontSize: 12, fontWeight: "bold" },
+  vipBadge: { backgroundColor: "#F3E8FF" },
+  vipBadgeText: { color: "#7C3AED", fontSize: 12, fontWeight: "bold" },
   unverifiedBadge: { backgroundColor: "#FEF3C7" },
   unverifiedBadgeText: { color: "#B45309", fontSize: 12, fontWeight: "bold" },
+  mt8: { marginTop: 8 },
   verifyBanner: {
     margin: 14,
     backgroundColor: "#E8F0F3",
@@ -258,6 +321,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logoutText: { color: "#DC2626", fontWeight: "bold", fontSize: 14 },
+  editInput: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 11, marginVertical: 5 },
+  saveButton: { backgroundColor: "#00685f", padding: 13, borderRadius: 8, alignItems: "center", marginVertical: 8 },
   versionText: {
     textAlign: "center",
     color: "#9CA3AF",

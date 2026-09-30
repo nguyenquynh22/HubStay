@@ -1,5 +1,9 @@
 ﻿const db = require("../common/db");
 
+const fs = require("fs/promises");
+const path = require("path");
+const crypto = require("crypto");
+
 class postsRepository {
   static calculateDistanceKm(fromLat, fromLng, toLat, toLng) {
     const earthRadiusKm = 6371;
@@ -12,66 +16,112 @@ class postsRepository {
         Math.sin(lngDelta / 2) *
         Math.sin(lngDelta / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return Number((earthRadiusKm * c).toFixed(1));
+    return earthRadiusKm * c;
   }
 
   static async getAll() {
-    const [rows] = await db.query("SELECT * FROM posts ORDER BY post_id DESC");
+    const sql = `
+      SELECT p.*, (SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, p.author_id AS user_id, p.post_type AS type, p.address_detail AS address, p.post_lat AS latitude, p.post_lng AS longitude, (SELECT image_url FROM post_images pi WHERE pi.post_id = p.post_id ORDER BY pi.is_cover DESC, pi.image_id LIMIT 1) AS image_url, u.full_name as author_name, u.avatar_url, u.is_verified, u.is_vip, u.vip_expires_at,
+             CASE WHEN COALESCE(u.is_vip, 0) = 1 AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW()) THEN 1 ELSE 0 END AS is_vip_active,
+             CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.user_id
+      WHERE p.status = 'AVAILABLE' AND p.is_approved = 1
+      ORDER BY is_vip_active DESC, is_verified_active DESC, p.created_at DESC
+    `;
+    const [rows] = await db.query(sql);
     return rows;
   }
 
   static async getById(id) {
-    const [rows] = await db.query("SELECT * FROM posts WHERE post_id = ?", [
-      id,
-    ]);
+    const sql = `
+      SELECT p.*, (SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, p.author_id AS user_id, p.post_type AS type, p.address_detail AS address, p.post_lat AS latitude, p.post_lng AS longitude, (SELECT image_url FROM post_images pi WHERE pi.post_id = p.post_id ORDER BY pi.is_cover DESC, pi.image_id LIMIT 1) AS image_url, u.full_name as author_name, u.avatar_url, u.is_verified, u.is_vip, u.vip_expires_at,
+             CASE WHEN COALESCE(u.is_vip, 0) = 1 AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW()) THEN 1 ELSE 0 END AS is_vip_active,
+             CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.user_id
+      WHERE p.post_id = ?
+    `;
+    const [rows] = await db.query(sql, [id]);
     return rows[0] || null;
   }
 
   static async getByAuthorId(authorId) {
-    const [rows] = await db.query(
-      "SELECT * FROM posts WHERE user_id = ? ORDER BY created_at DESC",
-      [authorId],
-    );
+    const sql = `
+      SELECT p.*, (SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, p.author_id AS user_id, p.post_type AS type, p.address_detail AS address, p.post_lat AS latitude, p.post_lng AS longitude, (SELECT image_url FROM post_images pi WHERE pi.post_id = p.post_id ORDER BY pi.is_cover DESC, pi.image_id LIMIT 1) AS image_url, u.full_name as author_name, u.avatar_url, u.is_verified, u.is_vip, u.vip_expires_at,
+             CASE WHEN COALESCE(u.is_vip, 0) = 1 AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW()) THEN 1 ELSE 0 END AS is_vip_active,
+             CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.user_id
+      WHERE p.author_id = ?
+      ORDER BY p.created_at DESC
+    `;
+    const [rows] = await db.query(sql, [authorId]);
     return rows;
   }
 
   static async create(data) {
     const sql = `
       INSERT INTO posts (
-        user_id, title, description, price, address, latitude, longitude,
-        status, type, is_verified, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        author_id, landmark_id, title, description, post_type, price, address_detail, post_lat, post_lng,
+        enable_booking, status, is_approved
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', 1)
     `;
 
     const values = [
-      data.user_id,
+      data.user_id ?? data.author_id,
+      data.landmark_id || null,
       data.title,
       data.description || null,
+      data.post_type || data.type || "RENTAL",
       data.price || null,
-      data.address || null,
+      data.address || data.address_detail || "",
       data.latitude ?? null,
       data.longitude ?? null,
-      data.status || "AVAILABLE",
-      data.type || "CHO_THUE",
-      data.is_verified ?? 0,
+      data.enable_booking ?? 1,
     ];
 
     const [result] = await db.query(sql, values);
-    return { post_id: result.insertId, ...data };
+    const storedImages = [];
+    if (Array.isArray(data.images)) {
+      for (const [index, imageUrl] of data.images.entries()) {
+        if (!imageUrl) continue;
+        let storedUrl = imageUrl;
+        const dataUri = typeof imageUrl === "string" && imageUrl.match(/^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/);
+        if (dataUri) {
+          const extension = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" }[dataUri[1]];
+          const buffer = Buffer.from(dataUri[2], "base64");
+          if (!buffer.length || buffer.length > 8 * 1024 * 1024) throw new Error("Image is invalid or larger than 8 MB.");
+          const filename = `${crypto.randomUUID()}.${extension}`;
+          const directory = path.join(__dirname, "../../uploads/posts");
+          await fs.mkdir(directory, { recursive: true });
+          await fs.writeFile(path.join(directory, filename), buffer, { flag: "wx" });
+          storedUrl = `/uploads/posts/${filename}`;
+        } else if (typeof imageUrl !== "string" || imageUrl.startsWith("data:")) {
+          throw new Error("Unsupported image format.");
+        }
+        await db.query("INSERT INTO post_images (post_id, image_url, is_cover) VALUES (?, ?, ?)", [result.insertId, storedUrl, index === 0 ? 1 : 0]);
+        storedImages.push(storedUrl);
+      }
+    }
+    return { post_id: result.insertId, ...data, images: storedImages };
   }
 
   static async update(id, updateData) {
+    const aliases = { user_id: "author_id", type: "post_type", address: "address_detail", latitude: "post_lat", longitude: "post_lng" };
+    updateData = Object.fromEntries(Object.entries(updateData).map(([key, value]) => [aliases[key] || key, value]));
     const allowedFields = [
-      "user_id",
+      "author_id",
+      "landmark_id",
       "title",
       "description",
       "price",
-      "address",
-      "latitude",
-      "longitude",
+      "address_detail",
+      "post_lat",
+      "post_lng",
       "status",
-      "type",
-      "is_verified",
+      "post_type",
+      "enable_booking",
     ];
 
     const fieldsToUpdate = [];
@@ -110,22 +160,36 @@ class postsRepository {
     const landmark = landmarkRows[0];
     if (!landmark) return [];
 
-    const [rows] = await db.query(
-      "SELECT * FROM posts WHERE latitude IS NOT NULL AND longitude IS NOT NULL",
-    );
+    const [rows] = await db.query(`
+      SELECT p.*, (SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, p.author_id AS user_id, p.post_type AS type, p.address_detail AS address, p.post_lat AS latitude, p.post_lng AS longitude, (SELECT image_url FROM post_images pi WHERE pi.post_id = p.post_id ORDER BY pi.is_cover DESC, pi.image_id LIMIT 1) AS image_url, u.full_name as author_name, u.avatar_url, u.is_verified, u.is_vip, u.vip_expires_at,
+             CASE WHEN COALESCE(u.is_vip, 0) = 1 AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW()) THEN 1 ELSE 0 END AS is_vip_active,
+             CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
+      FROM posts p
+      LEFT JOIN users u ON p.author_id = u.user_id
+      WHERE p.post_lat IS NOT NULL AND p.post_lng IS NOT NULL AND p.status = 'AVAILABLE' AND p.is_approved = 1
+    `);
 
     return rows
-      .map((post) => ({
-        ...post,
-        distance_km: this.calculateDistanceKm(
+      .map((post) => {
+        const exactDistanceKm = this.calculateDistanceKm(
           Number(landmark.latitude),
           Number(landmark.longitude),
-          Number(post.latitude),
-          Number(post.longitude),
-        ),
-      }))
-      .filter((post) => post.distance_km <= Number(radiusKm))
-      .sort((a, b) => a.distance_km - b.distance_km);
+          Number(post.post_lat),
+          Number(post.post_lng),
+        );
+        return { ...post, exact_distance_km: exactDistanceKm, distance_km: Number(exactDistanceKm.toFixed(1)) };
+      })
+      .filter((post) => post.exact_distance_km <= Number(radiusKm))
+      .map(({ exact_distance_km, ...post }) => post)
+      .sort((a, b) => {
+        if (Number(b.is_vip_active) !== Number(a.is_vip_active)) {
+          return Number(b.is_vip_active) - Number(a.is_vip_active);
+        }
+        if (Number(b.is_verified_active) !== Number(a.is_verified_active)) {
+          return Number(b.is_verified_active) - Number(a.is_verified_active);
+        }
+        return a.distance_km - b.distance_km;
+      });
   }
 
   static async getDistanceToPost({ postId, landmarkId }) {

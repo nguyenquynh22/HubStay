@@ -3,6 +3,7 @@ const router = express.Router();
 const controller = require("../controllers/subscriptions.controller");
 
 router.get("/", controller.getAll);
+router.post("/dev-activate", controller.activateDev);
 router.get("/:id", controller.getById);
 router.get("/user/:userId", controller.getByUser);
 router.post("/", controller.create);

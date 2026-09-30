@@ -16,8 +16,11 @@ class usersRepository {
   // Khai báo rõ ràng các cột INSERT để tránh bị lọt key thừa gây lỗi SQL
   static async create(data) {
     const sql = `
-      INSERT INTO users (full_name, email, phone, password_hash, role, avatar_url)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO users (
+        full_name, email, phone, password_hash, role, avatar_url,
+        is_verified, is_vip, vip_expires_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const values = [
       data.full_name,
@@ -26,6 +29,9 @@ class usersRepository {
       data.password_hash,
       data.role || "STUDENT",
       data.avatar_url || null,
+      data.is_verified ?? 0,
+      data.is_vip ?? 0,
+      data.vip_expires_at || null,
     ];
 
     const [result] = await db.query(sql, values);

@@ -1,4 +1,5 @@
 ﻿const Repo = require("../repositories/users.repository");
+const TrustService = require("../services/trust.service");
 const bcrypt = require("bcryptjs");
 
 module.exports = {
@@ -17,12 +18,48 @@ module.exports = {
       if (!item)
         return res.status(404).json({ success: false, message: "Not found" });
 
-      // Loại bỏ password_hash trước khi trả dữ liệu về client
       if (item.password_hash) {
         delete item.password_hash;
       }
 
-      res.json({ success: true, data: item });
+      const trustSummary = await TrustService.getUserTrustSummary(item.user_id);
+      res.json({
+        success: true,
+        data: {
+          ...item,
+          ...trustSummary,
+          is_vip_active:
+            !!trustSummary && Number(trustSummary.is_vip_active) === 1,
+          is_verified_active:
+            !!trustSummary && Number(trustSummary.is_verified_active) === 1,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getStatus: async (req, res, next) => {
+    try {
+      const user = await Repo.getById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: "Not found" });
+      }
+
+      const trustSummary = await TrustService.getUserTrustSummary(user.user_id);
+      res.json({
+        success: true,
+        data: {
+          user_id: user.user_id,
+          is_verified: Number(user.is_verified || 0),
+          is_vip: Number(user.is_vip || 0),
+          vip_expires_at: user.vip_expires_at || null,
+          is_verified_active:
+            !!trustSummary && Number(trustSummary.is_verified_active) === 1,
+          is_vip_active:
+            !!trustSummary && Number(trustSummary.is_vip_active) === 1,
+        },
+      });
     } catch (err) {
       next(err);
     }
@@ -48,13 +85,11 @@ module.exports = {
         delete newItem.password_hash;
       }
 
-      res
-        .status(201)
-        .json({
-          success: true,
-          message: "Created successfully",
-          data: newItem,
-        });
+      res.status(201).json({
+        success: true,
+        message: "Created successfully",
+        data: newItem,
+      });
     } catch (err) {
       next(err);
     }

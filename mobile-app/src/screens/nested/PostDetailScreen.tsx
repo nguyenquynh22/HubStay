@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -12,40 +12,12 @@ import {
   Dimensions,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
+import { toggleSavedPost, getSavedPosts, resolveImageUrl } from "../../services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Mock Data Bài đăng (Giả lập nhận dữ liệu từ CreatePostScreen)
-const MOCK_POST = {
-  id: "post_101",
-  postType: "RENTAL", // 'RENTAL' | 'SHARE' | 'PASS' | 'FIND'
-  postTypeLabel: "CHO THUÊ",
-  title: "Phòng khép kín sạch đẹp có gác lửng, gần ĐH SPKT",
-  price: "2.800.000 đ/tháng",
-  address: "Gần ngõ 64 Đường Chu Văn An, P. Hiến Nam, TP. Hưng Yên",
-  nearestSchool: "ĐH SPKT Hưng Yên (cách ~400m)",
-  description:
-    "- Phòng diện tích 25m2, mới sơn sửa 100%, gác cao không đụng đầu.\n- Tiện nghi: Điều hòa Inverter, bình nóng lạnh, tủ quần áo.\n- Điện: 3.500đ/kWh, Nước: 25.000đ/khối, Wifi tốc độ cao miễn phí.\n- Giờ giấc tự do, khóa cửa vân tay an toàn.",
-  images: [
-    "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800",
-    "https://images.unsplash.com/photo-1584622650111-993a426fbf0a?w=800",
-    "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=800",
-  ],
-  author: {
-    name: "Nguyễn Văn Đan",
-    avatar:
-      "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
-    isVerified: true, // Trạng thái xác minh
-    phone: "0987654321",
-    joinedDate: "Tháng 03/2024",
-  },
-  coords: {
-    lat: 20.9324,
-    lng: 106.0081,
-  },
-  enableBooking: true,
-  createdAt: "2 giờ trước",
-};
+
 
 interface Props {
   onBack?: () => void;
@@ -54,6 +26,7 @@ interface Props {
   onReport?: () => void;
   onOpenChat: () => void;
   post?: any;
+  userId?: number;
 }
 
 export default function PostDetailScreen({
@@ -63,14 +36,24 @@ export default function PostDetailScreen({
   onReport,
   onOpenChat,
   post,
+  userId = 1,
 }: Props) {
-  const currentPost = post || MOCK_POST;
+  const currentPost = post ? { ...post, id: String(post.post_id), postType: post.post_type, postTypeLabel: post.post_type, price: `${Number(post.price).toLocaleString("vi-VN")} đ/tháng`, address: post.address || post.address_detail || "", nearestSchool: "", images: post.image_url ? [post.image_url] : [], author: { name: post.author_name || "Người đăng", avatar: post.avatar_url || "", isVerified: Number(post.is_verified) === 1, phone: "", joinedDate: "" }, coords: post.latitude || post.post_lat ? { lat: Number(post.latitude || post.post_lat), lng: Number(post.longitude || post.post_lng) } : null, description: post.description || "", enableBooking: !!post.enable_booking, createdAt: new Date(post.created_at).toLocaleDateString("vi-VN") } : { images: [], author: {}, coords: null, title: "", price: "", description: "", address: "", nearestSchool: "", enableBooking: false };
+
+  if (post?.image_urls && typeof post.image_urls === "string") {
+    currentPost.images = post.image_urls.split("||").filter(Boolean);
+  }
 
   // 1. Image Slider State
   const [currentImgIndex, setCurrentImgIndex] = useState(0);
 
   // 2. Interaction State
   const [isSaved, setIsSaved] = useState(false);
+  useEffect(() => { if (!post?.post_id) return; getSavedPosts(userId).then((r) => setIsSaved((r.data || []).some((item: any) => Number(item.post_id) === Number(post.post_id)))).catch(console.error); }, [post?.post_id, userId]);
+  const handleToggleSaved = async () => {
+    try { const result = await toggleSavedPost(userId, Number(post.post_id)); setIsSaved(!!result.data?.saved); }
+    catch { Alert.alert("Chưa lưu được", "Kiểm tra kết nối máy chủ rồi thử lại."); }
+  };
   const [likes, setLikes] = useState(18);
   const [dislikes, setDislikes] = useState(1);
   const [userReaction, setUserReaction] = useState<"like" | "dislike" | null>(
@@ -108,7 +91,7 @@ export default function PostDetailScreen({
   };
 
   const handleNextImage = () => {
-    if (currentImgIndex < MOCK_POST.images.length - 1) {
+    if (currentImgIndex < currentPost.images.length - 1) {
       setCurrentImgIndex((prev) => prev + 1);
     }
   };
@@ -117,7 +100,7 @@ export default function PostDetailScreen({
   const handleShare = async () => {
     try {
       await Share.share({
-        message: `Xem phòng trọ này nè: ${MOCK_POST.title} - Giá: ${MOCK_POST.price}`,
+        message: `Xem phòng trọ này nè: ${currentPost.title} - Giá: ${currentPost.price}`,
       });
     } catch (error) {
       console.log("Error sharing:", error);
@@ -153,8 +136,8 @@ export default function PostDetailScreen({
 
   // Mở ứng dụng Google Maps bên ngoài khi nhấn xem bản đồ
   const handleOpenExternalMap = () => {
-    if (MOCK_POST.coords) {
-      const url = `https://www.google.com/maps/search/?api=1&query=${MOCK_POST.coords.lat},${MOCK_POST.coords.lng}`;
+    if (currentPost.coords) {
+      const url = `https://www.google.com/maps/search/?api=1&query=${currentPost.coords.lat},${currentPost.coords.lng}`;
       Linking.openURL(url);
     }
   };
@@ -233,16 +216,12 @@ export default function PostDetailScreen({
       >
         {/* 1. KHU VỰC HÌNH ẢNH BANNER + NÚT CHỨC NĂNG FLOATING */}
         <View style={styles.imageHeaderContainer}>
-          <Image
-            source={{ uri: MOCK_POST.images[currentImgIndex] }}
-            style={styles.mainImage}
-            resizeMode="cover"
-          />
+          {currentPost.images.length > 0 ? <Image source={{ uri: resolveImageUrl(currentPost.images[currentImgIndex]) }} style={styles.mainImage} resizeMode="cover" /> : <View style={[styles.mainImage, { backgroundColor: "#E2E8F0" }]} />}
 
           {/* Tag loại tin (VD: CHO THUÊ / Ở GHÉP) */}
           <View style={styles.postTypeBadge}>
             <Text style={styles.postTypeBadgeText}>
-              {MOCK_POST.postTypeLabel}
+              {currentPost.postTypeLabel}
             </Text>
           </View>
 
@@ -262,7 +241,7 @@ export default function PostDetailScreen({
 
             <TouchableOpacity
               style={styles.circleBtn}
-              onPress={() => setIsSaved(!isSaved)}
+              onPress={handleToggleSaved}
             >
               <MaterialIcons
                 name={isSaved ? "bookmark" : "bookmark-border"}
@@ -282,7 +261,7 @@ export default function PostDetailScreen({
             </TouchableOpacity>
           )}
 
-          {currentImgIndex < MOCK_POST.images.length - 1 && (
+          {currentImgIndex < currentPost.images.length - 1 && (
             <TouchableOpacity
               style={[styles.navArrowBtn, styles.nextBtn]}
               onPress={handleNextImage}
@@ -295,7 +274,7 @@ export default function PostDetailScreen({
           <View style={styles.imageCounterBadge}>
             <MaterialIcons name="photo-camera" size={14} color="#ffffff" />
             <Text style={styles.imageCounterText}>
-              {currentImgIndex + 1}/{MOCK_POST.images.length}
+              {currentImgIndex + 1}/{currentPost.images.length}
             </Text>
           </View>
         </View>
@@ -304,22 +283,22 @@ export default function PostDetailScreen({
         <View style={styles.contentContainer}>
           {/* Giá & Thời gian */}
           <View style={styles.priceRow}>
-            <Text style={styles.priceText}>{MOCK_POST.price}</Text>
-            <Text style={styles.timeText}>{MOCK_POST.createdAt}</Text>
+            <Text style={styles.priceText}>{currentPost.price}</Text>
+            <Text style={styles.timeText}>{currentPost.createdAt}</Text>
           </View>
 
           {/* Tiêu đề */}
-          <Text style={styles.titleText}>{MOCK_POST.title}</Text>
+          <Text style={styles.titleText}>{currentPost.title}</Text>
 
           {/* Địa chỉ & Trường lân cận */}
           <View style={styles.locationContainer}>
             <View style={styles.iconInfoRow}>
               <MaterialIcons name="place" size={18} color="#00685f" />
-              <Text style={styles.locationText}>{MOCK_POST.address}</Text>
+              <Text style={styles.locationText}>{currentPost.address}</Text>
             </View>
             <View style={styles.iconInfoRow}>
               <MaterialIcons name="school" size={18} color="#0058be" />
-              <Text style={styles.schoolText}>{MOCK_POST.nearestSchool}</Text>
+              <Text style={styles.schoolText}>{currentPost.nearestSchool}</Text>
             </View>
             <View style={styles.distanceRow}>
               <MaterialIcons name="directions-walk" size={18} color="#0f766e" />
@@ -364,13 +343,13 @@ export default function PostDetailScreen({
           {/* 3. THÔNG TIN NGƯỜI ĐĂNG & TRẠNG THÁI XÁC THỰC */}
           <View style={styles.authorCard}>
             <Image
-              source={{ uri: MOCK_POST.author.avatar }}
+              source={{ uri: currentPost.author.avatar }}
               style={styles.avatar}
             />
             <View style={styles.authorDetails}>
               <View style={styles.authorNameRow}>
-                <Text style={styles.authorName}>{MOCK_POST.author.name}</Text>
-                {MOCK_POST.author.isVerified && (
+                <Text style={styles.authorName}>{currentPost.author.name}</Text>
+                {currentPost.author.isVerified && (
                   <View style={styles.verifiedBadge}>
                     <MaterialIcons name="verified" size={14} color="#00685f" />
                     <Text style={styles.verifiedText}>Đã xác minh</Text>
@@ -378,7 +357,7 @@ export default function PostDetailScreen({
                 )}
               </View>
               <Text style={styles.authorSubText}>
-                Tham gia: {MOCK_POST.author.joinedDate}
+                Tham gia: {currentPost.author.joinedDate}
               </Text>
             </View>
           </View>
@@ -386,7 +365,7 @@ export default function PostDetailScreen({
           {/* 4. MÔ TẢ CHI TIẾT */}
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>Mô tả phòng trọ</Text>
-            <Text style={styles.descriptionText}>{MOCK_POST.description}</Text>
+            <Text style={styles.descriptionText}>{currentPost.description}</Text>
           </View>
 
           {/* 5. VỊ TRÍ TRÊN BẢN ĐỒ (KHUNG MAP BẮT SỰ KIỆN NHẤN LÀ HIỆN) */}
@@ -487,18 +466,18 @@ export default function PostDetailScreen({
         <TouchableOpacity
           style={styles.chatBtn}
           onPress={() =>
-            onNavigateToChat && onNavigateToChat(MOCK_POST.author.name)
+            onNavigateToChat && onNavigateToChat(currentPost.author.name)
           }
         >
           <MaterialIcons name="chat" size={20} color="#00685f" />
           <Text style={styles.chatBtnText}>Nhắn tin</Text>
         </TouchableOpacity>
 
-        {MOCK_POST.enableBooking && (
+        {currentPost.enableBooking && (
           <TouchableOpacity
             style={styles.bookingBtn}
             onPress={() =>
-              onNavigateToBooking && onNavigateToBooking(MOCK_POST.id)
+              onNavigateToBooking && onNavigateToBooking(currentPost.id)
             }
           >
             <MaterialIcons name="event" size={20} color="#ffffff" />
