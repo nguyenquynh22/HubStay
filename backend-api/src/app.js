@@ -13,7 +13,7 @@ const mongoDb = require("./common/mongo"); // MongoDB Chat
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, { cors: { origin: "*", methods: ["GET", "POST"] } });
 
 // Kết nối MongoDB
 mongoDb();
@@ -42,10 +42,12 @@ const verification_requestsRouter = require("./routes/verification_requests.rout
 const rentalRequestsRoute = require("./routes/rental_requests.route");
 const transactionsRoute = require("./routes/transactions.route");
 const subscriptionsRoute = require("./routes/subscriptions.route");
+const chatRoute = require("./routes/chat.route");
 
 app.use("/api/rental-requests", rentalRequestsRoute);
 app.use("/api/transactions", transactionsRoute);
 app.use("/api/subscriptions", subscriptionsRoute);
+app.use("/api/chat", chatRoute);
 
 // Map Endpoint APIs
 app.use("/api/appointments", appointmentsRouter);
@@ -73,7 +75,7 @@ app.use((err, req, res, next) => {
 // Chạy Server & Test kết nối DB
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
   // Test thử truy vấn kết nối TiDB Cloud

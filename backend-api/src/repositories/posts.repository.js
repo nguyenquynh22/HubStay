@@ -46,7 +46,8 @@ class postsRepository {
     return rows[0] || null;
   }
 
-  static async getByAuthorId(authorId) {
+  static async getByAuthorId(authorId, sortOrder = "DESC") {
+    const order = sortOrder === "ASC" ? "ASC" : "DESC";
     const sql = `
       SELECT p.*, (SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, p.author_id AS user_id, p.post_type AS type, p.address_detail AS address, p.post_lat AS latitude, p.post_lng AS longitude, (SELECT image_url FROM post_images pi WHERE pi.post_id = p.post_id ORDER BY pi.is_cover DESC, pi.image_id LIMIT 1) AS image_url, u.full_name as author_name, u.avatar_url, u.is_verified, u.is_vip, u.vip_expires_at,
              CASE WHEN COALESCE(u.is_vip, 0) = 1 AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW()) THEN 1 ELSE 0 END AS is_vip_active,
@@ -54,7 +55,7 @@ class postsRepository {
       FROM posts p
       LEFT JOIN users u ON p.author_id = u.user_id
       WHERE p.author_id = ?
-      ORDER BY p.created_at DESC
+      ORDER BY p.created_at ${order}, p.post_id ${order}
     `;
     const [rows] = await db.query(sql, [authorId]);
     return rows;

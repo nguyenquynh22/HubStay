@@ -3,47 +3,30 @@ const Message = require("../models/message.model");
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
-    console.log(`🔌 Người dùng kết nối Socket: ${socket.id}`);
-
-    // 1. Tham gia vào phòng chat cụ thể
-    socket.on("join_conversation", (conversationId) => {
-      socket.join(conversationId);
-    });
-
-    // 2. Gửi tin nhắn
-    socket.on("send_message", async (data) => {
+    socket.on("join_conversation", async ({ conversation_id, user_id } = {}, done = () => {}) => {
       try {
-        const { conversation_id, sender_id, text } = data;
-
-        // Kiểm tra xem đoạn chat có bị khóa không (Khi trọ đã thuê)
-        const conversation = await Conversation.findById(conversation_id);
-        if (!conversation) return;
-        if (conversation.is_closed) {
-          return socket.emit("error_message", "Cuộc trò chuyện này đã bị khóa do phòng đã cho thuê.");
-        }
-
-        // Lưu tin nhắn mới vào MongoDB
-        const newMessage = await Message.create({
-          conversation_id,
-          sender_id,
-          text,
-        });
-
-        // Cập nhật tin nhắn cuối cùng trong Conversation
-        await Conversation.findByIdAndUpdate(conversation_id, {
-          last_message: text,
-          last_message_at: new Date(),
-        });
-
-        // Bắn tin nhắn mới tới tất cả người trong room
-        io.to(conversation_id).emit("receive_message", newMessage);
-      } catch (err) {
-        console.error("Lỗi gửi tin nhắn:", err);
-      }
+        const c = await Conversation.findById(conversation_id);
+        if (!c || ![c.tenant_id, c.landlord_id].includes(Number(user_id))) return done({ success: false, message: "Bạn không thuộc cuộc trò chuyện này" });
+        socket.data.userId = Number(user_id);
+        socket.join(String(conversation_id));
+        done({ success: true });
+      } catch { done({ success: false, message: "Không thể tham gia cuộc trò chuyện" }); }
     });
 
-    socket.on("disconnect", () => {
-      console.log(`❌ Người dùng ngắt kết nối Socket: ${socket.id}`);
+    socket.on("send_message", async ({ conversation_id, text } = {}, done = () => {}) => {
+      try {
+        const content = typeof text === "string" ? text.trim() : "";
+        if (!content || content.length > 4000 || !socket.data.userId) return done({ success: false, message: "Tin nhắn không hợp lệ hoặc chưa tham gia cuộc trò chuyện" });
+        const c = await Conversation.findById(conversation_id);
+        if (!c || ![c.tenant_id, c.landlord_id].includes(socket.data.userId)) return done({ success: false, message: "Bạn không thuộc cuộc trò chuyện này" });
+        if (c.is_closed) return done({ success: false, message: "Cuộc trò chuyện đã đóng" });
+        const message = await Message.create({ conversation_id, sender_id: socket.data.userId, text: content });
+        c.last_message = content;
+        c.last_message_at = new Date();
+        await c.save();
+        io.to(String(conversation_id)).emit("receive_message", message);
+        done({ success: true });
+      } catch (err) { console.error("Chat send failed:", err.message); done({ success: false, message: "Không gửi được tin nhắn" }); }
     });
   });
 };

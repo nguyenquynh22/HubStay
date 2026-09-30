@@ -24,7 +24,8 @@ module.exports = {
   getByAuthor: async (req, res, next) => {
     try {
       const authorId = req.params.userId;
-      const data = await Repo.getByAuthorId(authorId);
+      const order = req.query.sort === "oldest" ? "ASC" : "DESC";
+      const data = await Repo.getByAuthorId(authorId, order);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
