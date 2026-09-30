@@ -1,5 +1,5 @@
 // src/navigation/MainTabNavigator.tsx
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,7 @@ import ChatListScreen from "../screens/main/ChatListScreen";
 import CreatePostScreen from "../screens/main/CreatePostScreen";
 import MyActivityScreen from "../screens/main/MyActivityScreen";
 import ProfileScreen from "../screens/main/ProfileScreen";
+import { getUserById } from "../services/api";
 
 interface Props {
   onVerifyPress: () => void;
@@ -38,11 +39,13 @@ export const MainTabNavigator: React.FC<Props> = ({
   const [currentTab, setCurrentTab] = useState<
     "HOME" | "CHAT" | "CREATE" | "ACTIVITY" | "PROFILE"
   >("HOME");
+  const [isVerified, setIsVerified] = useState(false);
+  useEffect(() => { getUserById(1).then((r) => setIsVerified(Number(r.data?.is_verified) === 1)).catch(console.error); }, [currentTab]);
 
   return (
     <SafeAreaView style={styles.container}>
       <StickyVerificationBanner
-        isVerified={false}
+        isVerified={isVerified}
         onVerifyPress={onVerifyPress}
       />
 

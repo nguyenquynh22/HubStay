@@ -18,6 +18,16 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
+      const { name, latitude, longitude } = req.body || {};
+      const lat = Number(latitude);
+      const lng = Number(longitude);
+      const categories = ['UNIVERSITY', 'PARK', 'MUSEUM', 'HOSPITAL', 'SHOPPING', 'OTHER'];
+      if (!String(name || '').trim() || !Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+        return res.status(400).json({ success: false, message: 'Vui lòng cung cấp tên và tọa độ hợp lệ cho địa điểm.' });
+      }
+      if (req.body.category && !categories.includes(req.body.category)) {
+        return res.status(400).json({ success: false, message: 'Danh mục địa điểm không hợp lệ.' });
+      }
       const newItem = await Repo.create(req.body);
       res.status(201).json({ success: true, message: 'Created successfully', data: newItem });
     } catch (err) { next(err); }

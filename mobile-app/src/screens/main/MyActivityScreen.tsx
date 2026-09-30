@@ -1,206 +1,24 @@
-// src/screens/main/MyActivityScreen.tsx
-import React, { useState, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  FlatList,
-  ActivityIndicator,
-  RefreshControl,
-} from "react-native";
-import { getPostsByUserId } from "../../services/api";
-import { MOCK_APPOINTMENTS } from "../../types/mockData";
-
-interface Props {
-  onOpenManageAppointments: () => void;
-  userId?: number; // Nhận userId từ AuthContext/Props (Mặc định = 1)
+import React, { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, RefreshControl, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { getPostsByUserId, getSavedPosts } from "../../services/api";
+interface Props { onOpenManageAppointments: () => void; userId?: number; }
+export default function MyActivityScreen({ onOpenManageAppointments, userId = 1 }: Props) {
+  const [tab, setTab] = useState<"MY_POSTS" | "SAVED">("MY_POSTS");
+  const [posts, setPosts] = useState<any[]>([]);
+  const [saved, setSaved] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { const [mine, bookmarks] = await Promise.all([getPostsByUserId(userId), getSavedPosts(userId)]); setPosts(mine.data || []); setSaved(bookmarks.data || []); }
+    catch (e) { console.error("Không tải được hoạt động", e); }
+    finally { setLoading(false); setRefreshing(false); }
+  }, [userId]);
+  useEffect(() => { load(); }, [load]);
+  const rows = tab === "MY_POSTS" ? posts : saved;
+  return <View style={styles.container}><View style={styles.tabs}>{([["MY_POSTS", "Bài đăng của tôi"], ["SAVED", "Đã lưu"]] as const).map(([key, label]) => <TouchableOpacity key={key} onPress={() => setTab(key)} style={[styles.tab, tab === key && styles.active]}><Text style={[styles.tabText, tab === key && styles.activeText]}>{label}</Text></TouchableOpacity>)}</View>
+    <TouchableOpacity onPress={onOpenManageAppointments} style={styles.appointments}><Text style={styles.appointmentText}>Lịch hẹn xem phòng ›</Text></TouchableOpacity>
+    {loading ? <ActivityIndicator style={{ marginTop: 30 }} color="#00685f"/> : <FlatList data={rows} keyExtractor={(item) => String(item.post_id)} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); load(); }}/>} contentContainerStyle={styles.list} ListEmptyComponent={<Text style={styles.empty}>{tab === "MY_POSTS" ? "Bạn chưa có bài đăng nào" : "Chưa có bài đăng nào được lưu"}</Text>} renderItem={({ item }) => <View style={styles.card}><Text style={styles.title}>{item.title}</Text><Text style={styles.price}>{Number(item.price).toLocaleString("vi-VN")} đ/tháng</Text><Text style={styles.address}>{item.address || item.address_detail}</Text><Text style={styles.status}>Trạng thái: {item.status}</Text></View>}/>}
+  </View>;
 }
-
-export default function MyActivityScreen({
-  onOpenManageAppointments,
-  userId = 1, // Tạm thời xài id: 1 làm mẫu
-}: Props) {
-  const [activeTopTab, setActiveTopTab] = useState<"MY_POSTS" | "SAVED">(
-    "MY_POSTS"
-  );
-  const [myPosts, setMyPosts] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
-  const [refreshing, setRefreshing] = useState<boolean>(false);
-
-  const pendingCount = MOCK_APPOINTMENTS.filter(
-    (a) => a.status === "PENDING"
-  ).length;
-
-  // Hàm gọi API lấy bài đăng của người dùng
-  const fetchMyPosts = async () => {
-    try {
-      setLoading(true);
-      const res = await getPostsByUserId(userId);
-      if (res.success) {
-        setMyPosts(res.data);
-      }
-    } catch (error) {
-      console.error("Lỗi tải bài đăng của tôi:", error);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTopTab === "MY_POSTS") {
-      fetchMyPosts();
-    }
-  }, [userId, activeTopTab]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchMyPosts();
-  };
-
-  const renderPostItem = ({ item }: { item: any }) => (
-    <View style={styles.postCard}>
-      <Text style={styles.postTitle}>{item.title}</Text>
-      <Text style={styles.postPrice}>
-        Giá: {Number(item.price).toLocaleString("vi-VN")} đ/tháng
-      </Text>
-      <Text style={styles.postStatus}>
-        Trạng thái:{" "}
-        <Text style={{ color: "#6B8FA3", fontWeight: "bold" }}>
-          {item.status === "AVAILABLE" ? "Đang hiển thị" : item.status}
-        </Text>
-      </Text>
-
-      {/* Lối vào Lịch Hẹn Xem Phòng */}
-      <TouchableOpacity
-        style={styles.appointmentBtn}
-        onPress={onOpenManageAppointments}
-      >
-        <View style={styles.btnRow}>
-          <Text style={styles.btnText}>📅 Lịch hẹn xem phòng</Text>
-          {pendingCount > 0 && (
-            <View style={styles.badge}>
-              <Text style={styles.badgeText}>{pendingCount}</Text>
-            </View>
-          )}
-        </View>
-        <Text style={{ color: "#6B7280" }}>›</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  return (
-    <View style={styles.container}>
-      {/* Top Tab Bar */}
-      <View style={styles.topTabBar}>
-        <TouchableOpacity
-          style={[
-            styles.topTab,
-            activeTopTab === "MY_POSTS" && styles.activeTopTab,
-          ]}
-          onPress={() => setActiveTopTab("MY_POSTS")}
-        >
-          <Text
-            style={[
-              styles.topTabText,
-              activeTopTab === "MY_POSTS" && styles.activeTopTabText,
-            ]}
-          >
-            Bài đăng của tôi
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.topTab,
-            activeTopTab === "SAVED" && styles.activeTopTab,
-          ]}
-          onPress={() => setActiveTopTab("SAVED")}
-        >
-          <Text
-            style={[
-              styles.topTabText,
-              activeTopTab === "SAVED" && styles.activeTopTabText,
-            ]}
-          >
-            Đã lưu
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Nội dung Tab */}
-      {activeTopTab === "MY_POSTS" ? (
-        loading && !refreshing ? (
-          <ActivityIndicator size="large" color="#6B8FA3" style={{ marginTop: 20 }} />
-        ) : (
-          <FlatList
-            data={myPosts}
-            keyExtractor={(item) => item.post_id.toString()}
-            renderItem={renderPostItem}
-            contentContainerStyle={styles.content}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            }
-            ListEmptyComponent={
-              <View style={styles.center}>
-                <Text style={{ color: "#9CA3AF" }}>Bạn chưa có bài đăng nào</Text>
-              </View>
-            }
-          />
-        )
-      ) : (
-        <View style={styles.center}>
-          <Text style={{ color: "#9CA3AF" }}>Chưa có bài viết nào được lưu</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F9FAFB" },
-  topTabBar: {
-    flexDirection: "row",
-    backgroundColor: "#FFF",
-    borderBottomWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  topTab: { flex: 1, paddingVertical: 14, alignItems: "center" },
-  activeTopTab: { borderBottomWidth: 2, borderColor: "#6B8FA3" },
-  topTabText: { fontSize: 14, color: "#6B7280" },
-  activeTopTabText: { color: "#6B8FA3", fontWeight: "bold" },
-  content: { padding: 14 },
-  postCard: {
-    backgroundColor: "#FFF",
-    padding: 14,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    marginBottom: 12,
-  },
-  postTitle: { fontSize: 15, fontWeight: "bold", color: "#1F2937" },
-  postPrice: { fontSize: 13, color: "#D97706", fontWeight: "600", marginTop: 4 },
-  postStatus: { fontSize: 12, color: "#4B5563", marginVertical: 6 },
-  appointmentBtn: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#EAF5F1",
-    padding: 12,
-    borderRadius: 6,
-    marginTop: 10,
-    borderWidth: 1,
-    borderColor: "#D6E3E8",
-  },
-  btnRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  btnText: { fontWeight: "bold", color: "#205F55", fontSize: 13 },
-  badge: {
-    backgroundColor: "#EF4444",
-    borderRadius: 10,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-  },
-  badgeText: { color: "#FFF", fontSize: 10, fontWeight: "bold" },
-  center: { flex: 1, justifyContent: "center", alignItems: "center", marginTop: 40 },
-});
+const styles=StyleSheet.create({container:{flex:1,backgroundColor:"#F9FAFB"},tabs:{flexDirection:"row",backgroundColor:"white",borderBottomWidth:1,borderColor:"#E5E7EB"},tab:{flex:1,padding:14,alignItems:"center"},active:{borderBottomWidth:2,borderColor:"#00685f"},tabText:{color:"#64748B"},activeText:{color:"#00685f",fontWeight:"700"},appointments:{margin:12,padding:13,backgroundColor:"#E8F0F3",borderRadius:9},appointmentText:{color:"#405D6B",fontWeight:"700"},list:{padding:12},card:{backgroundColor:"white",padding:14,borderRadius:10,marginBottom:10,borderWidth:1,borderColor:"#E5E7EB"},title:{fontSize:16,fontWeight:"700",color:"#1E293B"},price:{color:"#00685f",fontWeight:"700",marginTop:5},address:{color:"#64748B",marginTop:4},status:{color:"#64748B",fontSize:12,marginTop:5},empty:{textAlign:"center",color:"#94A3B8",padding:24}});

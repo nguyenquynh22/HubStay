@@ -9,6 +9,7 @@ export interface Post {
   badge: "SƯ PHẠM KỸ THUẬT" | "BÁCH KHOA" | "GIAO THÔNG";
   imageUrl: string;
   isVerifiedHost: boolean;
+  isVipHost?: boolean;
   type: "CHO_THUE" | "O_GHEP" | "PASS_PHONG";
   lat: number;
   lng: number;
@@ -87,6 +88,7 @@ export const MOCK_POSTS: Post[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=500",
     isVerifiedHost: true,
+    isVipHost: true,
     type: "CHO_THUE",
     lat: 20.9324,
     lng: 106.0081,
@@ -117,6 +119,7 @@ export const MOCK_POSTS: Post[] = [
     imageUrl:
       "https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=500",
     isVerifiedHost: true,
+    isVipHost: false,
     type: "CHO_THUE",
     lat: 20.9182,
     lng: 106.0078,

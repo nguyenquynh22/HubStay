@@ -8,33 +8,18 @@ module.exports = {
     } catch (err) { next(err); }
   },
 
-  getById: async (req, res, next) => {
-    try {
-      const item = await Repo.getById(req.params.id);
-      if (!item) return res.status(404).json({ success: false, message: 'Not found' });
-      res.json({ success: true, data: item });
-    } catch (err) { next(err); }
+  getByUser: async (req, res, next) => {
+    try { res.json({ success: true, data: await Repo.getByUserId(req.params.userId) }); }
+    catch (err) { next(err); }
   },
 
   create: async (req, res, next) => {
     try {
-      const newItem = await Repo.create(req.body);
-      res.status(201).json({ success: true, message: 'Created successfully', data: newItem });
+      const { user_id, post_id } = req.body;
+      if (!user_id || !post_id) return res.status(400).json({ success: false, message: "user_id và post_id là bắt buộc" });
+      const result = await Repo.toggle(user_id, post_id);
+      res.json({ success: true, data: result });
     } catch (err) { next(err); }
   },
 
-  update: async (req, res, next) => {
-    try {
-      const updated = await Repo.update(req.params.id, req.body);
-      res.json({ success: true, message: 'Updated successfully', data: updated });
-    } catch (err) { next(err); }
-  },
-
-  delete: async (req, res, next) => {
-    try {
-      const success = await Repo.delete(req.params.id);
-      if (!success) return res.status(404).json({ success: false, message: 'Not found' });
-      res.json({ success: true, message: 'Deleted successfully' });
-    } catch (err) { next(err); }
-  }
 };
