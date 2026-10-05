@@ -3,7 +3,7 @@
 const express = require("express");
 const morgan = require("morgan");
 const cors = require("cors");
-const path = require("path");
+const path = require("node:path");
 
 const http = require("http");
 const { Server } = require("socket.io");
@@ -27,7 +27,21 @@ app.use(morgan("dev"));
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+app.use("/uploads", express.static(path.resolve(__dirname, "../uploads"), {
+  dotfiles: "deny",
+  immutable: true,
+  maxAge: "1y",
+}));
+
+app.get("/api/health", async (_req, res) => {
+  try {
+    await db.query("SELECT 1");
+    res.json({ status: "ok", database: "connected" });
+  } catch (error) {
+    console.error("Health check database query failed:", error.message);
+    res.status(503).json({ status: "database_unavailable", database: "disconnected" });
+  }
+});
 
 // Import các Routes
 const appointmentsRouter = require("./routes/appointments.route");
@@ -47,12 +61,16 @@ const subscriptionsRoute = require("./routes/subscriptions.route");
 const chatRoute = require("./routes/chat.route");
 const administrativeAreasRouter = require("./routes/administrative_areas.route");
 const notificationsRouter = require("./routes/notifications.route");
+const adminRouter = require("./routes/admin.route");
 const authRouter = require("./routes/auth.route");
+const uploadsRouter = require("./routes/uploads.route");
 
+app.use("/api/uploads", uploadsRouter);
 app.use("/api/auth", authRouter);
 app.use("/api/rental-requests", rentalRequestsRoute);
 app.use("/api/transactions", transactionsRoute);
 app.use("/api/subscriptions", subscriptionsRoute);
+app.use("/api/admin", adminRouter);
 app.use("/api/chat", chatRoute);
 app.use("/api/administrative-areas", administrativeAreasRouter);
 app.use("/api/notifications", notificationsRouter);
@@ -77,17 +95,14 @@ app.use((req, res) => {
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message:
-      process.env.NODE_ENV === "production"
-        ? "Internal Server Error"
-        : err.message || "Internal Server Error",
-  });
+  const status = Number(err.statusCode ?? err.status);
+  const statusCode = Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
+  const message = process.env.NODE_ENV === "production" ? "Internal Server Error" : err.message;
+  res.status(statusCode).json({ success: false, message });
 });
 
 // Chạy Server & Test kết nối DB
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
