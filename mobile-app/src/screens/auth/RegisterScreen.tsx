@@ -168,8 +168,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F3F6F4" },
   content: {
     flexGrow: 1,
-    justifyContent: "center",
     paddingHorizontal: 24,
+    paddingTop: 40,
     paddingVertical: 28,
   },
   brand: { color: "#00685f", fontSize: 18, fontWeight: "800" },
