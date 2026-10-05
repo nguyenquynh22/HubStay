@@ -107,8 +107,8 @@ export default function LoginScreen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F3F6F4", justifyContent: "center" },
-  content: { paddingHorizontal: 24, paddingVertical: 32 },
+  container: { flex: 1, backgroundColor: "#F3F6F4"},
+  content: { paddingHorizontal: 24, paddingTop: 40, paddingVertical: 32 },
   brand: { color: "#00685f", fontSize: 18, fontWeight: "800" },
   title: { marginTop: 26, color: "#172B27", fontSize: 27, fontWeight: "800" },
   subtitle: {
