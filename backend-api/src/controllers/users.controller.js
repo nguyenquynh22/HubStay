@@ -97,18 +97,29 @@ module.exports = {
 
   update: async (req, res, next) => {
     try {
-      const { password, ...otherFields } = req.body;
-      const userData = { ...otherFields };
-
-      // Hash mật khẩu và gán vào đúng tên cột 'password_hash' của CSDL
-      if (password) {
-        const salt = await bcrypt.genSalt(10);
-        userData.password_hash = await bcrypt.hash(password, salt);
+      const userData = {};
+      for (const field of ["full_name", "phone", "avatar_url"]) {
+        if (req.body[field] !== undefined) userData[field] = req.body[field];
       }
+      if (
+        userData.full_name !== undefined &&
+        (typeof userData.full_name !== "string" || !userData.full_name.trim())
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Họ tên không được để trống",
+        });
+      }
+      if (typeof userData.full_name === "string")
+        userData.full_name = userData.full_name.trim();
+      if (typeof userData.phone === "string")
+        userData.phone = userData.phone.trim() || null;
+      if (!Object.keys(userData).length)
+        return res.status(400).json({
+          success: false,
+          message: "Không có thông tin hồ sơ hợp lệ để cập nhật",
+        });
       const updated = await Repo.update(req.params.id, userData);
-      if (updated && updated.password_hash) {
-        delete updated.password_hash;
-      }
       res.json({
         success: true,
         message: "Updated successfully",

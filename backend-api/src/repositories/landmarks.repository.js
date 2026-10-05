@@ -16,13 +16,19 @@ class landmarksRepository {
 
   static async create(data) {
     const sql = `
-      INSERT INTO landmarks (name, category, address, latitude, longitude)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO landmarks (
+        name, category, address, province_code, district_code, ward_code,
+        latitude, longitude
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
     const values = [
       data.name,
       data.category || "OTHER",
       data.address,
+      data.province_code ?? null,
+      data.district_code ?? null,
+      data.ward_code ?? null,
       data.latitude || 0,
       data.longitude || 0,
     ];

@@ -4,6 +4,8 @@ const controller = require("../controllers/subscriptions.controller");
 
 router.get("/", controller.getAll);
 router.post("/dev-activate", controller.activateDev);
+router.get("/packages", controller.getPackages);
+router.post("/purchase", controller.purchase);
 router.get("/:id", controller.getById);
 router.get("/user/:userId", controller.getByUser);
 router.post("/", controller.create);

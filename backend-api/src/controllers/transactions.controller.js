@@ -1,4 +1,6 @@
 const Repo = require("../repositories/transactions.repository");
+const crypto = require("crypto");
+const Notifications = require("../services/notifications.service");
 
 module.exports = {
   getAll: async (req, res, next) => {
@@ -13,7 +15,10 @@ module.exports = {
   getById: async (req, res, next) => {
     try {
       const item = await Repo.getById(req.params.id);
-      if (!item) return res.status(404).json({ success: false, message: "Giao dịch không tồn tại" });
+      if (!item)
+        return res
+          .status(404)
+          .json({ success: false, message: "Giao dịch không tồn tại" });
       res.json({ success: true, data: item });
     } catch (err) {
       next(err);
@@ -31,25 +36,36 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const { user_id, amount, payment_method, transaction_code } = req.body;
-
-      if (!user_id || !amount || !transaction_code) {
+      const user_id = Number(req.body.user_id);
+      const amount = Number(req.body.amount);
+      const payment_method = req.body.payment_method || "VIETQR";
+      if (
+        !Number.isInteger(user_id) ||
+        user_id < 1 ||
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
         return res.status(400).json({
           success: false,
-          message: "Vui lòng cung cấp user_id, amount và transaction_code",
+          message: "user_id và số tiền nạp hợp lệ là bắt buộc",
         });
       }
-
-      const existingCode = await Repo.getByCode(transaction_code);
-      if (existingCode) {
-        return res.status(400).json({ success: false, message: "Mã giao dịch đã tồn tại" });
+      if (
+        !["BANK_TRANSFER", "VIETQR", "ADMIN_MANUAL"].includes(payment_method)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Phương thức thanh toán không hợp lệ",
+        });
       }
+      const transaction_code = `TOPUP-${crypto.randomUUID()}`;
 
       const newItem = await Repo.create({
         user_id,
         amount,
         payment_method,
         transaction_code,
+        transaction_type: "TOP_UP",
         status: "PENDING",
       });
 
@@ -65,16 +81,46 @@ module.exports = {
 
   updateStatus: async (req, res, next) => {
     try {
-      const { status } = req.body;
-      const validStatuses = ["PENDING", "SUCCESS", "FAILED"];
-      if (!status || !validStatuses.includes(status)) {
-        return res.status(400).json({ success: false, message: "Trạng thái không hợp lệ" });
+      return res.status(403).json({
+        success: false,
+        message:
+          "Trạng thái giao dịch chỉ được cập nhật qua cổng thanh toán hoặc quy trình quản trị có xác thực",
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  simulateSuccess: async (req, res, next) => {
+    try {
+      if (process.env.NODE_ENV === "production") {
+        return res.status(403).json({
+          success: false,
+          message: "Mô phỏng thanh toán chỉ khả dụng ở môi trường phát triển",
+        });
       }
-
-      const success = await Repo.updateStatus(req.params.id, status);
-      if (!success) return res.status(404).json({ success: false, message: "Giao dịch không tồn tại" });
-
-      res.json({ success: true, message: "Cập nhật trạng thái giao dịch thành công" });
+      const result = await Repo.completeTopUp(req.params.id);
+      if (result.error) {
+        const status = result.error === "TRANSACTION_NOT_FOUND" ? 404 : 409;
+        return res
+          .status(status)
+          .json({ success: false, message: result.error });
+      }
+      if (!result.alreadyCompleted) {
+        const transaction = await Repo.getById(req.params.id);
+        await Notifications.notify(
+          Number(transaction?.user_id),
+          "DEPOSIT_SUCCESS",
+          "Nạp tiền thành công",
+          "Số dư ví của bạn đã được cập nhật.",
+          { transaction_id: Number(req.params.id) },
+        );
+      }
+      res.json({
+        success: true,
+        message: "Đã ghi nhận nạp tiền thử nghiệm",
+        data: result,
+      });
     } catch (err) {
       next(err);
     }

@@ -6,25 +6,31 @@ import {
   StyleSheet,
   Image,
   TouchableOpacity,
-  ScrollView,
-  Alert,
   ActivityIndicator,
   RefreshControl,
   TextInput,
+  ScrollView,
+  Alert,
 } from "react-native";
 import { getUserById, updateUser } from "../../services/api";
 
 interface Props {
   onVerifyPress?: () => void;
   onOpenTransactionHistory?: () => void;
+  onOpenNotifications?: () => void;
+  onOpenRentalRequests?: () => void;
   onOpenPaymentSimulation?: () => void;
+  onOpenAppointments?: (mode: "landlord" | "tenant") => void;
   userId?: number;
 }
 
 export default function ProfileScreen({
   onVerifyPress,
   onOpenTransactionHistory,
+  onOpenNotifications,
+  onOpenRentalRequests,
   onOpenPaymentSimulation,
+  onOpenAppointments,
   userId = 1,
 }: Props) {
   const [user, setUser] = useState<any>(null);
@@ -50,7 +56,9 @@ export default function ProfileScreen({
       }
     } catch (error) {
       setUser(null);
-      setProfileError(`Không tải được hồ sơ người dùng #${userId}. Hãy kiểm tra địa chỉ API và kết nối máy chủ.`);
+      setProfileError(
+        `Không tải được hồ sơ người dùng #${userId}. Hãy kiểm tra địa chỉ API và kết nối máy chủ.`,
+      );
       console.error("Lỗi tải thông tin cá nhân:", error);
     } finally {
       setLoading(false);
@@ -68,8 +76,20 @@ export default function ProfileScreen({
   };
 
   const saveProfile = async () => {
-    try { await updateUser(userId, { full_name: editName.trim(), phone: editPhone.trim() || null }); setEditing(false); fetchUserProfile(); Alert.alert("Đã lưu", "Thông tin cá nhân đã được cập nhật."); }
-    catch (error: any) { Alert.alert("Không lưu được", error?.response?.data?.message || "Kiểm tra API và thử lại."); }
+    try {
+      await updateUser(userId, {
+        full_name: editName.trim(),
+        phone: editPhone.trim() || null,
+      });
+      setEditing(false);
+      fetchUserProfile();
+      Alert.alert("Đã lưu", "Thông tin cá nhân đã được cập nhật.");
+    } catch (error: any) {
+      Alert.alert(
+        "Không lưu được",
+        error?.response?.data?.message || "Kiểm tra API và thử lại.",
+      );
+    }
   };
 
   const handleLogout = () => {
@@ -95,7 +115,9 @@ export default function ProfileScreen({
     return (
       <View style={styles.loadingContainer}>
         <Text style={styles.userName}>Không tải được hồ sơ</Text>
-        <Text style={styles.userEmail}>{profileError || `Người dùng #${userId}`}</Text>
+        <Text style={styles.userEmail}>
+          {profileError || `Người dùng #${userId}`}
+        </Text>
         <TouchableOpacity style={styles.saveButton} onPress={fetchUserProfile}>
           <Text style={{ color: "white", fontWeight: "700" }}>Thử lại</Text>
         </TouchableOpacity>
@@ -123,7 +145,6 @@ export default function ProfileScreen({
         <Text style={styles.userName}>{user?.full_name || "Người dùng"}</Text>
         <Text style={styles.userRole}>{user?.role || "STUDENT"}</Text>
         <Text style={styles.userEmail}>{user?.email || ""}</Text>
-        <Text style={styles.userEmail}>Mã người dùng: {user?.user_id ?? userId}</Text>
 
         <View style={styles.badgeContainer}>
           <View style={styles.badgeRow}>
@@ -167,7 +188,10 @@ export default function ProfileScreen({
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Tài khoản & Bảo mật</Text>
 
-        <TouchableOpacity style={styles.menuItem} onPress={() => setEditing(!editing)}>
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={() => setEditing(!editing)}
+        >
           <Text style={styles.menuText}>👤 Cập nhật thông tin cá nhân</Text>
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
@@ -185,10 +209,46 @@ export default function ProfileScreen({
           <Text style={styles.menuArrow}>›</Text>
         </TouchableOpacity>
 
-        {user?.role === "LANDLORD" && <TouchableOpacity style={styles.menuItem} onPress={onOpenPaymentSimulation}>
-          <Text style={styles.menuText}>🧾 Mô phỏng thanh toán</Text>
+        <TouchableOpacity style={styles.menuItem} onPress={onOpenNotifications}>
+          <Text style={styles.menuText}>Thông báo hệ thống</Text>
           <Text style={styles.menuArrow}>›</Text>
-        </TouchableOpacity>}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.menuItem}
+          onPress={onOpenRentalRequests}
+        >
+          <Text style={styles.menuText}>Yêu cầu thuê</Text>
+          <Text style={styles.menuArrow}>›</Text>
+        </TouchableOpacity>
+
+        {!!onOpenAppointments && (
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={() =>
+              onOpenAppointments(
+                user?.role === "LANDLORD" ? "landlord" : "tenant",
+              )
+            }
+          >
+            <Text style={styles.menuText}>
+              {user?.role === "LANDLORD"
+                ? "📅 Quản lý lịch hẹn xem phòng"
+                : "📅 Lịch xem phòng của tôi"}
+            </Text>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+        )}
+
+        {user?.role === "LANDLORD" && (
+          <TouchableOpacity
+            style={styles.menuItem}
+            onPress={onOpenPaymentSimulation}
+          >
+            <Text style={styles.menuText}>🧾 Nạp tiền & gói VIP</Text>
+            <Text style={styles.menuArrow}>›</Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.menuItem}>
           <Text style={styles.menuText}>🔒 Đổi mật khẩu</Text>
@@ -196,9 +256,51 @@ export default function ProfileScreen({
         </TouchableOpacity>
       </View>
 
-      {editing && <View style={styles.section}><Text style={styles.sectionTitle}>Chỉnh sửa thông tin cá nhân</Text><TextInput style={styles.editInput} value={editName} onChangeText={setEditName} placeholder="Họ tên"/><TextInput style={styles.editInput} value={editPhone} onChangeText={setEditPhone} placeholder="Số điện thoại" keyboardType="phone-pad"/><TouchableOpacity style={styles.saveButton} onPress={saveProfile}><Text style={{ color: "white", fontWeight: "700" }}>Lưu thay đổi</Text></TouchableOpacity></View>}
+      {editing && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Chỉnh sửa thông tin cá nhân</Text>
+          <TextInput
+            style={styles.editInput}
+            value={editName}
+            onChangeText={setEditName}
+            placeholder="Họ tên"
+          />
+          <TextInput
+            style={styles.editInput}
+            value={editPhone}
+            onChangeText={setEditPhone}
+            placeholder="Số điện thoại"
+            keyboardType="phone-pad"
+          />
+          <TouchableOpacity style={styles.saveButton} onPress={saveProfile}>
+            <Text style={{ color: "white", fontWeight: "700" }}>
+              Lưu thay đổi
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
-      {user?.role === "LANDLORD" && <View style={styles.section}><Text style={styles.sectionTitle}>Tài khoản chủ trọ</Text>{!isVerified ? <TouchableOpacity style={styles.saveButton} onPress={onVerifyPress}><Text style={{ color: "white", fontWeight: "700" }}>Xác thực tài khoản để mở VIP</Text></TouchableOpacity> : <TouchableOpacity style={styles.saveButton} onPress={onOpenPaymentSimulation}><Text style={{ color: "white", fontWeight: "700" }}>{isVip ? "Quản lý gói VIP" : "Đăng ký VIP miễn phí (dev)"}</Text></TouchableOpacity>}</View>}
+      {user?.role === "LANDLORD" && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Tài khoản chủ trọ</Text>
+          {!isVerified ? (
+            <TouchableOpacity style={styles.saveButton} onPress={onVerifyPress}>
+              <Text style={{ color: "white", fontWeight: "700" }}>
+                Xác thực tài khoản để mở VIP
+              </Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={onOpenPaymentSimulation}
+            >
+              <Text style={{ color: "white", fontWeight: "700" }}>
+                {isVip ? "Quản lý gói VIP" : "Đăng ký VIP miễn phí (dev)"}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Ứng dụng & Hỗ trợ</Text>
@@ -321,8 +423,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   logoutText: { color: "#DC2626", fontWeight: "bold", fontSize: 14 },
-  editInput: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 11, marginVertical: 5 },
-  saveButton: { backgroundColor: "#00685f", padding: 13, borderRadius: 8, alignItems: "center", marginVertical: 8 },
+  editInput: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 11,
+    marginVertical: 5,
+  },
+  saveButton: {
+    backgroundColor: "#00685f",
+    padding: 13,
+    borderRadius: 8,
+    alignItems: "center",
+    marginVertical: 8,
+  },
   versionText: {
     textAlign: "center",
     color: "#9CA3AF",

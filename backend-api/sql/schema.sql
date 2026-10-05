@@ -18,6 +18,7 @@ CREATE TABLE `users` (
   `is_verified` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0: Chưa xác thực, 1: Đã xác thực tích xanh',
   `is_vip` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '0: Thường, 1: VIP',
   `vip_expires_at` DATETIME DEFAULT NULL COMMENT 'Thời gian hết hạn gói VIP',
+  `wallet_balance` DECIMAL(12, 2) NOT NULL DEFAULT 0 COMMENT 'Số dư ví nội bộ (VNĐ)',
   `status` ENUM('ACTIVE', 'WARNING', 'BANNED') NOT NULL DEFAULT 'ACTIVE',
   `banned_until` DATETIME DEFAULT NULL,
   `ban_reason` TEXT DEFAULT NULL,
@@ -56,11 +57,15 @@ CREATE TABLE `landmarks` (
   `name` VARCHAR(150) NOT NULL,
   `category` ENUM('UNIVERSITY', 'PARK', 'MUSEUM', 'HOSPITAL', 'SHOPPING', 'OTHER') NOT NULL DEFAULT 'OTHER',
   `address` VARCHAR(255) NOT NULL,
+  `province_code` INT DEFAULT NULL,
+  `district_code` INT DEFAULT NULL,
+  `ward_code` INT DEFAULT NULL,
   `latitude` DECIMAL(10, 8) NOT NULL,
   `longitude` DECIMAL(11, 8) NOT NULL,
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   
   INDEX `idx_landmark_coords` (`latitude`, `longitude`),
+  INDEX `idx_landmark_area` (`province_code`, `district_code`, `ward_code`),
   INDEX `idx_landmark_category` (`category`)
 ) ENGINE=InnoDB;
 
@@ -77,6 +82,9 @@ CREATE TABLE `posts` (
   `price` DECIMAL(12, 2) NOT NULL,
   `area` DECIMAL(6, 2) DEFAULT NULL,
   `address_detail` VARCHAR(255) NOT NULL,
+  `province_code` INT DEFAULT NULL,
+  `district_code` INT DEFAULT NULL,
+  `ward_code` INT DEFAULT NULL,
   `post_lat` DECIMAL(10, 8) NOT NULL,
   `post_lng` DECIMAL(11, 8) NOT NULL,
   `enable_booking` TINYINT(1) NOT NULL DEFAULT 1,
@@ -88,6 +96,7 @@ CREATE TABLE `posts` (
   FOREIGN KEY (`author_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
   FOREIGN KEY (`landmark_id`) REFERENCES `landmarks`(`landmark_id`) ON DELETE SET NULL,
   INDEX `idx_post_coords` (`post_lat`, `post_lng`),
+  INDEX `idx_post_area` (`province_code`, `district_code`, `ward_code`),
   INDEX `idx_post_type_status` (`post_type`, `status`, `is_approved`)
 ) ENGINE=InnoDB;
 
@@ -152,7 +161,10 @@ CREATE TABLE `landlord_availability` (
 CREATE TABLE `appointments` (
   `appointment_id` INT AUTO_INCREMENT PRIMARY KEY,
   `post_id` INT NOT NULL,
-  `tenant_id` INT NOT NULL,
+  `tenant_id` INT DEFAULT NULL,
+  `source` ENUM('IN_APP', 'EXTERNAL') NOT NULL DEFAULT 'IN_APP',
+  `guest_name` VARCHAR(100) DEFAULT NULL,
+  `guest_phone` VARCHAR(20) DEFAULT NULL,
   `appointment_date` DATE NOT NULL,
   `appointment_time` TIME NOT NULL,
   `note` TEXT DEFAULT NULL,
@@ -163,7 +175,8 @@ CREATE TABLE `appointments` (
   
   FOREIGN KEY (`post_id`) REFERENCES `posts`(`post_id`) ON DELETE CASCADE,
   FOREIGN KEY (`tenant_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
-  INDEX `idx_appointments_landlord_read` (`post_id`, `status`, `is_read_by_landlord`)
+  INDEX `idx_appointments_landlord_read` (`post_id`, `status`, `is_read_by_landlord`),
+  INDEX `idx_appointments_tenant_created` (`tenant_id`, `created_at`)
 ) ENGINE=InnoDB;
 
 -- =================================================================
@@ -220,8 +233,9 @@ CREATE TABLE IF NOT EXISTS `rental_requests` (
 CREATE TABLE IF NOT EXISTS `transactions` (
   `transaction_id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NOT NULL,
+  `transaction_type` ENUM('TOP_UP', 'VIP_PURCHASE') NOT NULL DEFAULT 'TOP_UP',
   `amount` DECIMAL(12, 2) NOT NULL COMMENT 'Số tiền nạp (VNĐ)',
-  `payment_method` ENUM('BANK_TRANSFER', 'VIETQR', 'ADMIN_MANUAL') NOT NULL DEFAULT 'VIETQR',
+  `payment_method` ENUM('BANK_TRANSFER', 'VIETQR', 'ADMIN_MANUAL', 'WALLET') NOT NULL DEFAULT 'VIETQR',
   `transaction_code` VARCHAR(100) NOT NULL UNIQUE COMMENT 'Mã giao dịch / Mã chuyển khoản',
   `status` ENUM('PENDING', 'SUCCESS', 'FAILED') NOT NULL DEFAULT 'PENDING',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -236,6 +250,7 @@ CREATE TABLE IF NOT EXISTS `transactions` (
 CREATE TABLE IF NOT EXISTS `subscriptions` (
   `subscription_id` INT AUTO_INCREMENT PRIMARY KEY,
   `user_id` INT NOT NULL,
+  `transaction_id` INT DEFAULT NULL,
   `package_name` VARCHAR(100) NOT NULL COMMENT 'VD: VIP_1_MONTH, VIP_1_YEAR',
   `price` DECIMAL(12, 2) NOT NULL,
   `start_date` DATETIME NOT NULL,
@@ -244,7 +259,25 @@ CREATE TABLE IF NOT EXISTS `subscriptions` (
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
   FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
+  FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`transaction_id`) ON DELETE SET NULL,
   INDEX `idx_sub_user_status` (`user_id`, `status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =================================================================
+-- 14. BẢNG notifications (Thông báo hệ thống)
+-- =================================================================
+CREATE TABLE IF NOT EXISTS `notifications` (
+  `notification_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+  `user_id` INT NOT NULL,
+  `type` VARCHAR(50) NOT NULL,
+  `title` VARCHAR(150) NOT NULL,
+  `body` VARCHAR(500) NOT NULL,
+  `data` JSON DEFAULT NULL,
+  `is_read` TINYINT(1) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`) ON DELETE CASCADE,
+  INDEX `idx_notifications_user_read_created` (`user_id`, `is_read`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 SELECT * FROM users;

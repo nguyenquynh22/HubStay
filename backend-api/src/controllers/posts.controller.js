@@ -1,4 +1,5 @@
 ﻿const Repo = require("../repositories/posts.repository");
+const Notifications = require("../services/notifications.service");
 
 module.exports = {
   getAll: async (req, res, next) => {
@@ -57,6 +58,68 @@ module.exports = {
     }
   },
 
+  search: async (req, res, next) => {
+    try {
+      const parseCode = (value) => {
+        if (value == null || value === "") return null;
+        const code = Number(value);
+        return Number.isInteger(code) && code > 0 ? code : NaN;
+      };
+      const provinceCode = parseCode(req.query.province_code);
+      const districtCode = parseCode(req.query.district_code);
+      const wardCode = parseCode(req.query.ward_code);
+      const landmarkId = parseCode(req.query.landmark_id);
+      const invalidCodes = [
+        provinceCode,
+        districtCode,
+        wardCode,
+        landmarkId,
+      ].some((code) => Number.isNaN(code));
+
+      if (invalidCodes) {
+        return res.status(400).json({
+          success: false,
+          message: "Mã khu vực hoặc landmark không hợp lệ",
+        });
+      }
+      if (wardCode != null && (districtCode == null || provinceCode == null)) {
+        return res.status(400).json({
+          success: false,
+          message: "Tìm theo xã cần province_code và district_code",
+        });
+      }
+      if (districtCode != null && provinceCode == null) {
+        return res.status(400).json({
+          success: false,
+          message: "Tìm theo huyện cần province_code",
+        });
+      }
+
+      const radiusKm = Number(req.query.radius_km ?? 10);
+      if (landmarkId != null && ![5, 10, 20, 30].includes(radiusKm)) {
+        return res.status(400).json({
+          success: false,
+          message: "Bán kính phải là 5, 10, 20 hoặc 30 km",
+        });
+      }
+
+      const data = await Repo.search({
+        provinceCode,
+        districtCode,
+        wardCode,
+        landmarkId,
+        radiusKm,
+      });
+      res.json({
+        success: true,
+        data,
+        radius_km: landmarkId ? radiusKm : null,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   getDistanceToPost: async (req, res, next) => {
     try {
       const landmarkId = Number(
@@ -89,7 +152,48 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
+      const areaCodes = [
+        req.body.province_code,
+        req.body.district_code,
+        req.body.ward_code,
+      ].map(Number);
+      if (!areaCodes.every((code) => Number.isInteger(code) && code > 0)) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Vui lòng chọn đầy đủ tỉnh/thành phố, quận/huyện và phường/xã",
+        });
+      }
+      const latitudeValue = req.body.latitude ?? req.body.post_lat;
+      const longitudeValue = req.body.longitude ?? req.body.post_lng;
+      const latitude = Number(latitudeValue);
+      const longitude = Number(longitudeValue);
+      if (
+        latitudeValue == null ||
+        longitudeValue == null ||
+        latitudeValue === "" ||
+        longitudeValue === "" ||
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90 ||
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            "Vui lòng cung cấp latitude/longitude hoặc post_lat/post_lng hợp lệ",
+        });
+      }
       const newItem = await Repo.create(req.body);
+      await Notifications.notify(
+        Number(req.body.user_id ?? req.body.author_id),
+        "POST_APPROVED",
+        "Tin đăng đã được duyệt",
+        "Tin đăng của bạn đã được xuất bản.",
+        { post_id: newItem.post_id },
+      );
       res.status(201).json({
         success: true,
         message: "Created successfully",
