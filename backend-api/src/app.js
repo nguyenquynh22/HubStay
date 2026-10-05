@@ -5,21 +5,23 @@ const morgan = require("morgan");
 const cors = require("cors");
 const path = require("path");
 
-const http = require('http');
-const { Server } = require('socket.io');
+const http = require("http");
+const { Server } = require("socket.io");
 
 const db = require("./common/db"); // MySQL TiDB
 const mongoDb = require("./common/mongo"); // MongoDB Chat
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: { origin: "*", methods: ["GET", "POST"] },
+});
 
 // Kết nối MongoDB
 mongoDb();
 
 // Khởi tạo Socket.IO
-require('./sockets/chat.socket')(io);
+require("./sockets/chat.socket")(io);
 
 app.use(morgan("dev"));
 app.use(cors());
@@ -42,10 +44,18 @@ const verification_requestsRouter = require("./routes/verification_requests.rout
 const rentalRequestsRoute = require("./routes/rental_requests.route");
 const transactionsRoute = require("./routes/transactions.route");
 const subscriptionsRoute = require("./routes/subscriptions.route");
+const chatRoute = require("./routes/chat.route");
+const administrativeAreasRouter = require("./routes/administrative_areas.route");
+const notificationsRouter = require("./routes/notifications.route");
+const authRouter = require("./routes/auth.route");
 
+app.use("/api/auth", authRouter);
 app.use("/api/rental-requests", rentalRequestsRoute);
 app.use("/api/transactions", transactionsRoute);
 app.use("/api/subscriptions", subscriptionsRoute);
+app.use("/api/chat", chatRoute);
+app.use("/api/administrative-areas", administrativeAreasRouter);
+app.use("/api/notifications", notificationsRouter);
 
 // Map Endpoint APIs
 app.use("/api/appointments", appointmentsRouter);
@@ -67,13 +77,19 @@ app.use((req, res) => {
 // Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ success: false, message: "Internal Server Error" });
+  res.status(500).json({
+    success: false,
+    message:
+      process.env.NODE_ENV === "production"
+        ? "Internal Server Error"
+        : err.message || "Internal Server Error",
+  });
 });
 
 // Chạy Server & Test kết nối DB
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, async () => {
+server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
 
   // Test thử truy vấn kết nối TiDB Cloud

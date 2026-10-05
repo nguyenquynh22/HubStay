@@ -6,6 +6,7 @@ router.get("/", controller.getAll);
 router.get("/:id", controller.getById);
 router.get("/user/:userId", controller.getByUser);
 router.post("/", controller.create);
+router.post("/dev/:id/simulate-success", controller.simulateSuccess);
 router.patch("/:id/status", controller.updateStatus);
 
 module.exports = router;

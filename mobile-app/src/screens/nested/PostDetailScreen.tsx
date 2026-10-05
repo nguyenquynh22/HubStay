@@ -12,33 +12,75 @@ import {
   Dimensions,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { toggleSavedPost, getSavedPosts, resolveImageUrl } from "../../services/api";
+import {
+  toggleSavedPost,
+  getSavedPosts,
+  resolveImageUrl,
+  createRentalRequest,
+  markPostRented,
+} from "../../services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Mock Data Bài đăng (Giả lập nhận dữ liệu từ CreatePostScreen)
 
-
 interface Props {
   onBack?: () => void;
-  onNavigateToChat?: (authorId: string) => void;
   onNavigateToBooking?: (postId: string) => void;
   onReport?: () => void;
   onOpenChat: () => void;
   post?: any;
-  userId?: number;
+  userId: number;
 }
 
 export default function PostDetailScreen({
   onBack,
-  onNavigateToChat,
   onNavigateToBooking,
   onReport,
   onOpenChat,
   post,
-  userId = 1,
+  userId,
 }: Props) {
-  const currentPost = post ? { ...post, id: String(post.post_id), postType: post.post_type, postTypeLabel: post.post_type, price: `${Number(post.price).toLocaleString("vi-VN")} đ/tháng`, address: post.address || post.address_detail || "", nearestSchool: "", images: post.image_url ? [post.image_url] : [], author: { name: post.author_name || "Người đăng", avatar: post.avatar_url || "", isVerified: Number(post.is_verified) === 1, phone: "", joinedDate: "" }, coords: post.latitude || post.post_lat ? { lat: Number(post.latitude || post.post_lat), lng: Number(post.longitude || post.post_lng) } : null, description: post.description || "", enableBooking: !!post.enable_booking, createdAt: new Date(post.created_at).toLocaleDateString("vi-VN") } : { images: [], author: {}, coords: null, title: "", price: "", description: "", address: "", nearestSchool: "", enableBooking: false };
+  const currentPost = post
+    ? {
+        ...post,
+        id: String(post.post_id),
+        postType: post.post_type,
+        postTypeLabel: post.post_type,
+        price: `${Number(post.price).toLocaleString("vi-VN")} đ/tháng`,
+        address: post.address || post.address_detail || "",
+        nearestSchool: "",
+        images: post.image_url ? [post.image_url] : [],
+        author: {
+          name: post.author_name || "Người đăng",
+          avatar: post.avatar_url || "",
+          isVerified: Number(post.is_verified) === 1,
+          phone: "",
+          joinedDate: "",
+        },
+        coords:
+          post.latitude || post.post_lat
+            ? {
+                lat: Number(post.latitude || post.post_lat),
+                lng: Number(post.longitude || post.post_lng),
+              }
+            : null,
+        description: post.description || "",
+        enableBooking:
+          post.enable_booking === true || Number(post.enable_booking) === 1,
+        createdAt: new Date(post.created_at).toLocaleDateString("vi-VN"),
+      }
+    : {
+        images: [],
+        author: {},
+        coords: null,
+        title: "",
+        price: "",
+        description: "",
+        address: "",
+        nearestSchool: "",
+        enableBooking: false,
+      };
 
   if (post?.image_urls && typeof post.image_urls === "string") {
     currentPost.images = post.image_urls.split("||").filter(Boolean);
@@ -49,10 +91,30 @@ export default function PostDetailScreen({
 
   // 2. Interaction State
   const [isSaved, setIsSaved] = useState(false);
-  useEffect(() => { if (!post?.post_id) return; getSavedPosts(userId).then((r) => setIsSaved((r.data || []).some((item: any) => Number(item.post_id) === Number(post.post_id)))).catch(console.error); }, [post?.post_id, userId]);
+  const isOwnPost = Number(post?.author_id ?? post?.user_id) === Number(userId);
+  useEffect(() => {
+    if (!post?.post_id) return;
+    getSavedPosts(userId)
+      .then((r) =>
+        setIsSaved(
+          (r.data || []).some(
+            (item: any) => Number(item.post_id) === Number(post.post_id),
+          ),
+        ),
+      )
+      .catch(console.error);
+  }, [post?.post_id, userId]);
   const handleToggleSaved = async () => {
-    try { const result = await toggleSavedPost(userId, Number(post.post_id)); setIsSaved(!!result.data?.saved); }
-    catch { Alert.alert("Chưa lưu được", "Kiểm tra kết nối máy chủ rồi thử lại."); }
+    try {
+      const result = await toggleSavedPost(userId, Number(post.post_id));
+      setIsSaved(!!result.data?.saved);
+      Alert.alert(
+        result.data?.saved ? "Đã lưu vào yêu thích" : "Đã bỏ khỏi yêu thích",
+        "Mở tab Bài viết → Yêu thích để xem danh sách đã lưu.",
+      );
+    } catch {
+      Alert.alert("Chưa lưu được", "Kiểm tra kết nối máy chủ rồi thử lại.");
+    }
   };
   const [likes, setLikes] = useState(18);
   const [dislikes, setDislikes] = useState(1);
@@ -62,8 +124,7 @@ export default function PostDetailScreen({
   const [roomStatus, setRoomStatus] = useState<"AVAILABLE" | "RENTED">(
     currentPost.status || "AVAILABLE",
   );
-  const [hostConfirmed, setHostConfirmed] = useState(false);
-  const [viewerConfirmed, setViewerConfirmed] = useState(false);
+  const [rentalRequestSent, setRentalRequestSent] = useState(false);
 
   // 3. Map View Toggle State
   const [showMap, setShowMap] = useState(false);
@@ -174,38 +235,41 @@ export default function PostDetailScreen({
     );
   };
 
-  const handleViewerConfirm = () => {
+  const handleViewerConfirm = async () => {
     if (roomStatus === "RENTED") return;
-    setViewerConfirmed(true);
-    if (hostConfirmed) {
-      setRoomStatus("RENTED");
+    try {
+      await createRentalRequest({
+        post_id: Number(post.post_id),
+        tenant_id: userId,
+      });
+      setRentalRequestSent(true);
       Alert.alert(
-        "Đã ẩn bài đăng",
-        "Cả hai bên đã xác nhận phòng này đã được thuê. Bài đăng sẽ không hiển thị nữa.",
+        "Đã gửi yêu cầu thuê",
+        "Chủ trọ sẽ xem và phản hồi yêu cầu của bạn.",
       );
-      return;
+    } catch (error: any) {
+      Alert.alert(
+        "Không gửi được yêu cầu",
+        error?.response?.data?.message || "Vui lòng thử lại.",
+      );
     }
-    Alert.alert(
-      "Đã lưu xác nhận",
-      "Bạn đã xác nhận thuê phòng. Chủ trọ sẽ kiểm tra và xác nhận lại để ẩn bài đăng.",
-    );
   };
 
-  const handleHostConfirm = () => {
+  const handleHostConfirm = async () => {
     if (roomStatus === "RENTED") return;
-    setHostConfirmed(true);
-    if (viewerConfirmed) {
+    try {
+      await markPostRented(Number(post.post_id), userId);
       setRoomStatus("RENTED");
       Alert.alert(
-        "Đã ẩn bài đăng",
-        "Chủ trọ và người xem đã xác nhận phòng đã có người thuê. Bài đăng sẽ bị ẩn khỏi danh sách tìm kiếm.",
+        "Đã chốt trọ",
+        "Bài đăng đã chuyển sang Đã cho thuê và các cuộc trò chuyện liên quan đã bị khóa.",
       );
-      return;
+    } catch (error: any) {
+      Alert.alert(
+        "Không cập nhật được",
+        error?.response?.data?.message || "Vui lòng thử lại.",
+      );
     }
-    Alert.alert(
-      "Đã xác nhận",
-      "Bạn đã xác nhận phòng này đã được thuê. Hệ thống sẽ ẩn bài đăng khi cả hai xác nhận đồng ý.",
-    );
   };
 
   return (
@@ -216,7 +280,17 @@ export default function PostDetailScreen({
       >
         {/* 1. KHU VỰC HÌNH ẢNH BANNER + NÚT CHỨC NĂNG FLOATING */}
         <View style={styles.imageHeaderContainer}>
-          {currentPost.images.length > 0 ? <Image source={{ uri: resolveImageUrl(currentPost.images[currentImgIndex]) }} style={styles.mainImage} resizeMode="cover" /> : <View style={[styles.mainImage, { backgroundColor: "#E2E8F0" }]} />}
+          {currentPost.images.length > 0 ? (
+            <Image
+              source={{
+                uri: resolveImageUrl(currentPost.images[currentImgIndex]),
+              }}
+              style={styles.mainImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[styles.mainImage, { backgroundColor: "#E2E8F0" }]} />
+          )}
 
           {/* Tag loại tin (VD: CHO THUÊ / Ở GHÉP) */}
           <View style={styles.postTypeBadge}>
@@ -235,17 +309,26 @@ export default function PostDetailScreen({
 
           {/* Nhóm nút Share & Lưu (Góc phải) */}
           <View style={styles.topRightActions}>
-            <TouchableOpacity style={styles.circleBtn} onPress={handleShare}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Chia sẻ bài đăng"
+              style={styles.circleBtn}
+              onPress={handleShare}
+            >
               <MaterialIcons name="share" size={20} color="#131b2e" />
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.circleBtn}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isSaved ? "Bỏ lưu bài đăng" : "Lưu bài đăng vào yêu thích"
+              }
+              style={[styles.circleBtn, isSaved && styles.savedCircleBtn]}
               onPress={handleToggleSaved}
             >
               <MaterialIcons
                 name={isSaved ? "bookmark" : "bookmark-border"}
-                size={22}
+                size={24}
                 color={isSaved ? "#00685f" : "#131b2e"}
               />
             </TouchableOpacity>
@@ -320,22 +403,32 @@ export default function PostDetailScreen({
 
           {roomStatus !== "RENTED" && (
             <View style={styles.confirmationCard}>
-              <Text style={styles.confirmTitle}>Xác nhận thuê / đã thuê</Text>
+              <Text style={styles.confirmTitle}>
+                {isOwnPost ? "Chốt trạng thái phòng" : "Gửi yêu cầu thuê"}
+              </Text>
               <View style={styles.confirmButtons}>
-                <TouchableOpacity
-                  style={styles.confirmBtnPrimary}
-                  onPress={handleViewerConfirm}
-                >
-                  <Text style={styles.confirmBtnText}>Xác nhận thuê</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.confirmBtnSecondary}
-                  onPress={handleHostConfirm}
-                >
-                  <Text style={styles.confirmBtnSecondaryText}>
-                    Phòng này đã được thuê
-                  </Text>
-                </TouchableOpacity>
+                {isOwnPost ? (
+                  <TouchableOpacity
+                    style={styles.confirmBtnSecondary}
+                    onPress={handleHostConfirm}
+                  >
+                    <Text style={styles.confirmBtnSecondaryText}>
+                      Xác nhận đã cho thuê
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    disabled={rentalRequestSent}
+                    style={styles.confirmBtnPrimary}
+                    onPress={handleViewerConfirm}
+                  >
+                    <Text style={styles.confirmBtnText}>
+                      {rentalRequestSent
+                        ? "Đã gửi yêu cầu"
+                        : "Gửi yêu cầu thuê"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           )}
@@ -365,7 +458,9 @@ export default function PostDetailScreen({
           {/* 4. MÔ TẢ CHI TIẾT */}
           <View style={styles.sectionBlock}>
             <Text style={styles.sectionTitle}>Mô tả phòng trọ</Text>
-            <Text style={styles.descriptionText}>{currentPost.description}</Text>
+            <Text style={styles.descriptionText}>
+              {currentPost.description}
+            </Text>
           </View>
 
           {/* 5. VỊ TRÍ TRÊN BẢN ĐỒ (KHUNG MAP BẮT SỰ KIỆN NHẤN LÀ HIỆN) */}
@@ -462,29 +557,30 @@ export default function PostDetailScreen({
       </ScrollView>
 
       {/* 7. FIXED BOTTOM ACTION BAR (CHAT & ĐẶT LỊCH) */}
-      <View style={styles.bottomDock}>
-        <TouchableOpacity
-          style={styles.chatBtn}
-          onPress={() =>
-            onNavigateToChat && onNavigateToChat(currentPost.author.name)
-          }
-        >
-          <MaterialIcons name="chat" size={20} color="#00685f" />
-          <Text style={styles.chatBtnText}>Nhắn tin</Text>
-        </TouchableOpacity>
-
-        {currentPost.enableBooking && (
+      {!isOwnPost && roomStatus !== "RENTED" && (
+        <View style={styles.bottomDock}>
           <TouchableOpacity
-            style={styles.bookingBtn}
-            onPress={() =>
-              onNavigateToBooking && onNavigateToBooking(currentPost.id)
-            }
+            accessibilityRole="button"
+            accessibilityLabel="Nhắn tin với người đăng"
+            style={styles.chatBtn}
+            onPress={onOpenChat}
           >
-            <MaterialIcons name="event" size={20} color="#ffffff" />
-            <Text style={styles.bookingBtnText}>Đặt lịch xem phòng</Text>
+            <MaterialIcons name="chat" size={23} color="#00685f" />
           </TouchableOpacity>
-        )}
-      </View>
+
+          {currentPost.enableBooking && (
+            <TouchableOpacity
+              style={styles.bookingBtn}
+              onPress={() =>
+                onNavigateToBooking && onNavigateToBooking(currentPost.id)
+              }
+            >
+              <MaterialIcons name="event" size={20} color="#ffffff" />
+              <Text style={styles.bookingBtnText}>Đặt lịch xem phòng</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -544,6 +640,11 @@ const styles = StyleSheet.create({
     right: 14,
     flexDirection: "row",
     gap: 8,
+  },
+  savedCircleBtn: {
+    backgroundColor: "#D7F1E8",
+    borderWidth: 2,
+    borderColor: "#00685f",
   },
   navArrowBtn: {
     position: "absolute",
@@ -895,7 +996,8 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   chatBtn: {
-    flex: 1,
+    width: 50,
+    flexShrink: 0,
     height: 46,
     borderRadius: 10,
     borderWidth: 1.5,
@@ -906,13 +1008,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  chatBtnText: {
-    color: "#00685f",
-    fontSize: 14,
-    fontWeight: "700",
-  },
   bookingBtn: {
-    flex: 1.4,
+    flex: 1,
     height: 46,
     borderRadius: 10,
     backgroundColor: "#00685f",

@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -8,20 +9,40 @@ import {
   SafeAreaView,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { MOCK_TRANSACTIONS, Transaction } from "../../types/mockData";
+import { getTransactionsByUser } from "../../services/api";
+
+interface Transaction {
+  transaction_id: number;
+  transaction_type: "TOP_UP" | "VIP_PURCHASE";
+  amount: number;
+  payment_method: string;
+  status: "PENDING" | "SUCCESS" | "FAILED";
+  transaction_code: string;
+  created_at: string;
+}
 
 interface Props {
   onBack?: () => void;
+  userId: number;
 }
 
-export default function TransactionHistoryScreen({ onBack }: Props) {
-  const summary = useMemo(() => {
-    const total = MOCK_TRANSACTIONS.reduce((sum, item) => sum + item.amount, 0);
-    const success = MOCK_TRANSACTIONS.filter(
-      (item) => item.status === "SUCCESS",
-    ).length;
-    return { total, success };
-  }, []);       
+export default function TransactionHistoryScreen({ onBack, userId }: Props) {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getTransactionsByUser(userId)
+      .then((response) => setTransactions(response.data || []))
+      .catch((error) => console.error("Không tải được giao dịch:", error))
+      .finally(() => setLoading(false));
+  }, [userId]);
+
+  const summary = {
+    total: transactions
+      .filter((item) => item.status === "SUCCESS")
+      .reduce((sum, item) => sum + Number(item.amount), 0),
+    success: transactions.filter((item) => item.status === "SUCCESS").length,
+  };
 
   const renderItem = ({ item }: { item: Transaction }) => {
     const statusColor =
@@ -34,7 +55,11 @@ export default function TransactionHistoryScreen({ onBack }: Props) {
     return (
       <View style={styles.card}>
         <View style={styles.rowBetween}>
-          <Text style={styles.title}>{item.postTitle}</Text>
+          <Text style={styles.title}>
+            {item.transaction_type === "VIP_PURCHASE"
+              ? "Mua gói VIP"
+              : "Nạp tiền vào ví"}
+          </Text>
           <View
             style={[
               styles.statusBadge,
@@ -54,9 +79,11 @@ export default function TransactionHistoryScreen({ onBack }: Props) {
         <Text style={styles.amount}>
           {item.amount.toLocaleString("vi-VN")} đ
         </Text>
-        <Text style={styles.meta}>Phương thức: {item.method}</Text>
-        <Text style={styles.meta}>Mô tả: {item.description}</Text>
-        <Text style={styles.meta}>Ngày: {item.date}</Text>
+        <Text style={styles.meta}>Phương thức: {item.payment_method}</Text>
+        <Text style={styles.meta}>Mã giao dịch: {item.transaction_code}</Text>
+        <Text style={styles.meta}>
+          Ngày: {new Date(item.created_at).toLocaleString("vi-VN")}
+        </Text>
       </View>
     );
   };
@@ -80,15 +107,19 @@ export default function TransactionHistoryScreen({ onBack }: Props) {
         </Text>
       </View>
 
-      <FlatList
-        data={MOCK_TRANSACTIONS}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={renderItem}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
-        }
-      />
+      {loading ? (
+        <ActivityIndicator style={{ marginTop: 28 }} color="#00685f" />
+      ) : (
+        <FlatList
+          data={transactions}
+          keyExtractor={(item) => String(item.transaction_id)}
+          contentContainerStyle={styles.listContent}
+          renderItem={renderItem}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>Chưa có giao dịch nào</Text>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }

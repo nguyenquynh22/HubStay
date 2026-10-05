@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   SafeAreaView,
-  Platform
+  Platform,
 } from "react-native";
 import { StickyVerificationBanner } from "../components/StickyVerificationBanner";
 
@@ -20,27 +20,45 @@ import { getUserById } from "../services/api";
 interface Props {
   onVerifyPress: () => void;
   onOpenManageAppointments: () => void;
+  onOpenAppointments: (mode: "landlord" | "tenant") => void;
   onOpenTransactionHistory: () => void;
+  onOpenNotifications: () => void;
+  onOpenRentalRequests: () => void;
+  onLogout: () => void;
   onOpenPaymentSimulation: () => void;
   onSelectPost: (post: any) => void;
-  onOpenChat: () => void;
+  onOpenChat: (conversation: any) => void;
   onOpenCreate: () => void;
+  userId: number;
 }
 
 export const MainTabNavigator: React.FC<Props> = ({
   onVerifyPress,
   onOpenManageAppointments,
+  onOpenAppointments,
   onOpenTransactionHistory,
+  onOpenNotifications,
+  onOpenRentalRequests,
+  onLogout,
   onOpenPaymentSimulation,
   onSelectPost,
   onOpenChat,
   onOpenCreate,
+  userId,
 }) => {
   const [currentTab, setCurrentTab] = useState<
     "HOME" | "CHAT" | "CREATE" | "ACTIVITY" | "PROFILE"
   >("HOME");
   const [isVerified, setIsVerified] = useState(false);
-  useEffect(() => { getUserById(1).then((r) => setIsVerified(Number(r.data?.is_verified) === 1)).catch(console.error); }, [currentTab]);
+  const [userRole, setUserRole] = useState("");
+  useEffect(() => {
+    getUserById(userId)
+      .then((r) => {
+        setIsVerified(Number(r.data?.is_verified) === 1);
+        setUserRole(r.data?.role || "");
+      })
+      .catch(console.error);
+  }, [currentTab, userId]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -51,20 +69,30 @@ export const MainTabNavigator: React.FC<Props> = ({
 
       <View style={styles.body}>
         {currentTab === "HOME" && <HomeScreen onSelectPost={onSelectPost} />}
-        {currentTab === "CHAT" && <ChatListScreen onOpenChat={onOpenChat} />}
+        {currentTab === "CHAT" && (
+          <ChatListScreen onOpenChat={onOpenChat} userId={userId} />
+        )}
         {currentTab === "CREATE" && (
-          <CreatePostScreen onCreated={onOpenCreate} />
+          <CreatePostScreen onCreated={onOpenCreate} userId={userId} />
         )}
         {currentTab === "ACTIVITY" && (
           <MyActivityScreen
             onOpenManageAppointments={onOpenManageAppointments}
+            onSelectPost={onSelectPost}
+            userId={userId}
+            canManageAppointments={userRole === "LANDLORD"}
           />
         )}
         {currentTab === "PROFILE" && (
           <ProfileScreen
+            userId={userId}
             onVerifyPress={onVerifyPress}
             onOpenTransactionHistory={onOpenTransactionHistory}
+            onOpenNotifications={onOpenNotifications}
+            onOpenRentalRequests={onOpenRentalRequests}
+            onLogout={onLogout}
             onOpenPaymentSimulation={onOpenPaymentSimulation}
+            onOpenAppointments={onOpenAppointments}
           />
         )}
       </View>
@@ -200,10 +228,10 @@ const styles = StyleSheet.create({
     // Đổ bóng cho Android
     elevation: 6,
   },
-  plusIcon: { 
-    color: "#FFF", 
-    fontSize: 28, 
+  plusIcon: {
+    color: "#FFF",
+    fontSize: 28,
     fontWeight: "bold",
-    marginTop: Platform.OS === "ios" ? -2 : -4, 
+    marginTop: Platform.OS === "ios" ? -2 : -4,
   },
 });

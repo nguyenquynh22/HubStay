@@ -1,16 +1,38 @@
 ﻿const Repo = require("../repositories/verification_requests.repository");
 const UsersRepo = require("../repositories/users.repository");
+const Notifications = require("../services/notifications.service");
 
 module.exports = {
   devVerify: async (req, res, next) => {
     try {
-      if (process.env.NODE_ENV === "production") return res.status(403).json({ success: false, message: "Chỉ bật xác thực demo ở môi trường phát triển" });
-      if (req.body.code !== (process.env.DEV_VERIFICATION_CODE || "123456")) return res.status(400).json({ success: false, message: "Mã xác thực demo không đúng" });
+      if (process.env.NODE_ENV === "production")
+        return res.status(403).json({
+          success: false,
+          message: "Chỉ bật xác thực demo ở môi trường phát triển",
+        });
+      if (req.body.code !== (process.env.DEV_VERIFICATION_CODE || "123456"))
+        return res
+          .status(400)
+          .json({ success: false, message: "Mã xác thực demo không đúng" });
       const user = await UsersRepo.getById(req.params.userId);
-      if (!user) return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
-      await UsersRepo.update(user.user_id, { is_verified: 1 });
-      res.json({ success: true, message: "Đã bật tích xanh xác thực demo", data: { user_id: user.user_id, is_verified: 1 } });
-    } catch (err) { next(err); }
+      if (!user)
+        return res
+          .status(404)
+          .json({ success: false, message: "Người dùng không tồn tại" });
+      const verifiedAt = new Date();
+      await UsersRepo.update(user.user_id, {
+        is_verified: 1,
+        kyc_status: "APPROVED",
+        verified_at: verifiedAt,
+      });
+      res.json({
+        success: true,
+        message: "Đã bật tích xanh xác thực demo",
+        data: { user_id: user.user_id, is_verified: 1 },
+      });
+    } catch (err) {
+      next(err);
+    }
   },
   getAll: async (req, res, next) => {
     try {
@@ -43,11 +65,39 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const { user_id, account_type, front_card_url, back_card_url } = req.body;
-      if (!user_id || !front_card_url) {
+      const user_id = Number(req.body.user_id);
+      const account_type = req.body.account_type || "STUDENT";
+      const front_card_url =
+        req.body.front_card_url || req.body.front_image_url;
+      const back_card_url =
+        req.body.back_card_url || req.body.back_image_url || null;
+      if (!Number.isInteger(user_id) || user_id < 1 || !front_card_url) {
+        return res.status(400).json({
+          success: false,
+          message: "user_id và front_card_url là bắt buộc",
+        });
+      }
+      if (!["STUDENT", "WORKER", "LANDLORD"].includes(account_type)) {
+        return res.status(400).json({
+          success: false,
+          message: "Loại tài khoản xác minh không hợp lệ",
+        });
+      }
+      const user = await UsersRepo.getById(user_id);
+      if (!user)
         return res
-          .status(400)
-          .json({ success: false, message: "user_id và front_card_url là bắt buộc" });
+          .status(404)
+          .json({ success: false, message: "Người dùng không tồn tại" });
+      if (Number(user.is_verified) === 1)
+        return res
+          .status(409)
+          .json({ success: false, message: "Tài khoản đã được xác minh" });
+      const requests = await Repo.getByUserId(user_id);
+      if (requests.some((request) => request.status === "PENDING")) {
+        return res.status(409).json({
+          success: false,
+          message: "Bạn đã có yêu cầu KYC đang chờ xử lý",
+        });
       }
 
       const newItem = await Repo.create({
@@ -57,13 +107,12 @@ module.exports = {
         back_card_url: back_card_url || null,
         status: "PENDING",
       });
-      res
-        .status(201)
-        .json({
-          success: true,
-          message: "Yêu cầu xác thực đã được gửi",
-          data: newItem,
-        });
+      await UsersRepo.update(user_id, { kyc_status: "PENDING" });
+      res.status(201).json({
+        success: true,
+        message: "Yêu cầu xác thực đã được gửi",
+        data: newItem,
+      });
     } catch (err) {
       next(err);
     }
@@ -71,19 +120,25 @@ module.exports = {
 
   approve: async (req, res, next) => {
     try {
-      const request = await Repo.getById(req.params.id);
-      if (!request)
+      const updated = await Repo.review(
+        req.params.id,
+        "APPROVED",
+        req.body.reviewer_note || "Đã xác thực thành công",
+        req.body.reviewer_id || null,
+      );
+      if (updated.error) {
+        const status = updated.error === "REQUEST_NOT_FOUND" ? 404 : 409;
         return res
-          .status(404)
-          .json({ success: false, message: "Yêu cầu không tồn tại" });
-
-      await UsersRepo.update(request.user_id, { is_verified: 1 });
-
-      const updated = await Repo.update(req.params.id, {
-        status: "APPROVED",
-        reviewed_at: new Date(),
-        reviewer_note: req.body.reviewer_note || "Đã xác thực thành công",
-      });
+          .status(status)
+          .json({ success: false, message: updated.error });
+      }
+      await Notifications.notify(
+        updated.user_id,
+        "KYC_APPROVED",
+        "Xác minh thành công",
+        "Tài khoản của bạn đã được xác minh.",
+        { request_id: updated.request_id },
+      );
 
       res.json({
         success: true,
@@ -97,19 +152,25 @@ module.exports = {
 
   reject: async (req, res, next) => {
     try {
-      const request = await Repo.getById(req.params.id);
-      if (!request)
+      const updated = await Repo.review(
+        req.params.id,
+        "REJECTED",
+        req.body.reviewer_note || "Tài liệu chưa đạt yêu cầu",
+        req.body.reviewer_id || null,
+      );
+      if (updated.error) {
+        const status = updated.error === "REQUEST_NOT_FOUND" ? 404 : 409;
         return res
-          .status(404)
-          .json({ success: false, message: "Yêu cầu không tồn tại" });
-
-      await UsersRepo.update(request.user_id, { is_verified: 0 });
-
-      const updated = await Repo.update(req.params.id, {
-        status: "REJECTED",
-        reviewed_at: new Date(),
-        reviewer_note: req.body.reviewer_note || "Tài liệu chưa đạt yêu cầu",
-      });
+          .status(status)
+          .json({ success: false, message: updated.error });
+      }
+      await Notifications.notify(
+        updated.user_id,
+        "KYC_REJECTED",
+        "Yêu cầu xác minh cần bổ sung",
+        updated.reviewer_note,
+        { request_id: updated.request_id },
+      );
 
       res.json({
         success: true,

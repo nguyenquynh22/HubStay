@@ -1,11 +1,10 @@
-﻿const express = require('express');
-const controller = require('../controllers/appointments.controller');
+﻿const express = require("express");
+const controller = require("../controllers/appointments.controller");
 const router = express.Router();
 
-router.get('/', controller.getAll);
-router.get('/:id', controller.getById);
-router.post('/', controller.create);
-router.put('/:id', controller.update);
-router.delete('/:id', controller.delete);
+router.get("/landlord/:userId", controller.getForLandlord);
+router.get("/tenant/:userId", controller.getForTenant);
+router.post("/", controller.create);
+router.put("/:id", controller.update);
 
 module.exports = router;

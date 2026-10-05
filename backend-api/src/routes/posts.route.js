@@ -4,6 +4,7 @@ const router = express.Router();
 
 router.get("/nearby", controller.getNearbyByLandmark);
 router.get("/landmark/:landmarkId/nearby", controller.getNearbyByLandmark);
+router.get("/search", controller.search);
 router.get("/distance/:postId", controller.getDistanceToPost);
 router.get("/user/:userId", controller.getByAuthor);
 router.get("/:id", controller.getById);

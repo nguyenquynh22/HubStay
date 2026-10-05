@@ -17,12 +17,31 @@ import {
 import { MaterialIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { createLandmark, createPost, getLandmarks } from "../../services/api";
+import AdministrativeAreaPicker from "../../components/AdministrativeAreaPicker";
+import {
+  AdministrativeAreaSelection,
+  createLandmark,
+  createPost,
+  getLandmarks,
+} from "../../services/api";
 
 interface Props {
   onCreated: () => void;
   onBack?: () => void;
+  userId: number;
 }
+
+const blockedWords = [
+  "fuck",
+  "shit",
+  "bitch",
+  "địt",
+  "đụ",
+  "đéo",
+  "lồn",
+  "cặc",
+  "đĩ",
+];
 
 const normalizeSearch = (value: string) =>
   value
@@ -30,6 +49,12 @@ const normalizeSearch = (value: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/\u0111/g, "d")
     .toLocaleLowerCase("vi");
+
+const normalizeAreaName = (value: string) =>
+  normalizeSearch(value).replace(
+    /^(thanh pho trung uong|thanh pho|thi xa|thi tran|dac khu|quan|huyen|tinh|xa|phuong)\s+/,
+    "",
+  );
 
 const formatCoordinates = (latitude: number, longitude: number) =>
   `${latitude}, ${longitude}`;
@@ -45,7 +70,7 @@ const parseCoordinates = (value: string) => {
   return { latitude, longitude };
 };
 
-export default function CreatePostScreen({ onCreated, onBack }: Props) {
+export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   const NativeMapView: any =
     Platform.OS === "web" ? null : require("react-native-maps").default;
   const NativeMapMarker: any =
@@ -63,6 +88,12 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
 
   // Location State
   const [addressText, setAddressText] = useState("");
+  const [administrativeArea, setAdministrativeArea] =
+    useState<AdministrativeAreaSelection>({
+      province: null,
+      district: null,
+      ward: null,
+    });
   const [landmarks, setLandmarks] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [selectedLandmark, setSelectedLandmark] = useState<any>(null);
@@ -319,16 +350,17 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
   };
 
   // Hàm lấy vị trí GPS hiện tại (Nút cho phép truy cập vị trí)
-  const handleGetCurrentLocation = async () => {
+  const handleGetCurrentLocation = async (showFeedback = true) => {
     setLoadingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Quyền truy cập bị từ chối",
-          "Vui lòng cấp quyền vị trí để ứng dụng lấy tọa độ tự động.",
-        );
-        setLoadingLocation(false);
+        if (showFeedback) {
+          Alert.alert(
+            "Quyền truy cập bị từ chối",
+            "Bạn có thể chọn vị trí phòng trên bản đồ thay thế.",
+          );
+        }
         return;
       }
 
@@ -352,9 +384,19 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
         const formattedAddress = `Gần ${place.street || place.name || ""}, ${place.subregion || place.district || ""}`;
         setAddressText(formattedAddress);
       }
-      Alert.alert("Thành công", "Đã ghi nhận tọa độ GPS của phòng trọ!");
+      if (showFeedback) {
+        Alert.alert(
+          "Đã lấy vị trí",
+          "Bạn có thể ghim lại vị trí phòng trên bản đồ nếu cần.",
+        );
+      }
     } catch (error) {
-      Alert.alert("Lỗi", "Không thể lấy vị trí hiện tại. Vui lòng thử lại.");
+      if (showFeedback) {
+        Alert.alert(
+          "Không lấy được GPS",
+          "Bạn có thể chọn vị trí phòng trên bản đồ.",
+        );
+      }
     } finally {
       setLoadingLocation(false);
     }
@@ -364,6 +406,7 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
     getLandmarks()
       .then((r) => setLandmarks(r.data || []))
       .catch(console.error);
+    handleGetCurrentLocation(false);
   }, []);
 
   useEffect(() => {
@@ -400,7 +443,28 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
   const landmarkTokens = normalizeSearch(landmarkSearch.trim())
     .split(/\s+/)
     .filter(Boolean);
+  const areaTerms = [
+    administrativeArea.province,
+    administrativeArea.district,
+    administrativeArea.ward,
+  ]
+    .filter((unit): unit is NonNullable<typeof unit> => !!unit)
+    .map((unit) => normalizeAreaName(unit.name));
   const matchingLandmarks = landmarks
+    .filter((item) => {
+      if (!administrativeArea.province) return true;
+      if (item.province_code != null) {
+        return (
+          Number(item.province_code) === administrativeArea.province.code &&
+          (!administrativeArea.district ||
+            Number(item.district_code) === administrativeArea.district.code) &&
+          (!administrativeArea.ward ||
+            Number(item.ward_code) === administrativeArea.ward.code)
+        );
+      }
+      const address = normalizeSearch(item.address || "");
+      return areaTerms.every((term) => address.includes(term));
+    })
     .map((item) => {
       const searchableText = normalizeSearch(
         `${item.name} ${item.address} ${item.category}`,
@@ -452,6 +516,9 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
         address:
           mapAddress.trim() ||
           `${mapPin.latitude.toFixed(6)}, ${mapPin.longitude.toFixed(6)}`,
+        province_code: administrativeArea.province?.code,
+        district_code: administrativeArea.district?.code,
+        ward_code: administrativeArea.ward?.code,
         latitude: mapPin.latitude,
         longitude: mapPin.longitude,
       });
@@ -481,6 +548,25 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
       Alert.alert("Thiếu thông tin", "Nhập tiêu đề và giá thuê.");
       return;
     }
+    const content = normalizeSearch(`${title} ${description}`)
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/);
+    if (
+      blockedWords.some((word) =>
+        content.includes(
+          normalizeSearch(word)
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim(),
+        ),
+      )
+    ) {
+      Alert.alert(
+        "Nội dung chưa phù hợp",
+        "Hãy chỉnh sửa tiêu đề hoặc mô tả trước khi đăng.",
+      );
+      return;
+    }
     if (images.length < 2) {
       Alert.alert(
         "Thiếu ảnh phòng",
@@ -495,26 +581,33 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
       );
       return;
     }
-    if (!selectedLandmark) {
+    if (
+      !administrativeArea.province ||
+      !administrativeArea.district ||
+      !administrativeArea.ward
+    ) {
       Alert.alert(
-        "Chưa chọn địa điểm",
-        "Chọn landmark gần nhất hoặc thêm địa điểm mới trên bản đồ.",
+        "Chưa chọn địa chỉ khu vực",
+        "Chọn tỉnh/thành phố, quận/huyện và phường/xã để người thuê tìm thấy bài đăng.",
       );
       return;
     }
     setSubmitting(true);
     try {
       await createPost({
-        user_id: 1,
+        user_id: userId,
         title: title.trim(),
         description: description.trim(),
         price: Number(price.replace(/[^0-9]/g, "")),
         address:
           addressText.trim() ||
           `Vị trí ghim (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`,
+        province_code: administrativeArea.province.code,
+        district_code: administrativeArea.district.code,
+        ward_code: administrativeArea.ward.code,
         latitude: coords.lat,
         longitude: coords.lng,
-        landmark_id: selectedLandmark.landmark_id,
+        landmark_id: selectedLandmark?.landmark_id || null,
         post_type: postType,
         enable_booking: enableBooking ? 1 : 0,
         images,
@@ -855,13 +948,24 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
         {/* SECTION 5: VỊ TRÍ TƯƠNG ĐỐI & TRƯỜNG ĐẠI HỌC (TẮT NHẬP TỌA ĐỘ THỦ CÔNG) */}
         <View style={styles.cardSection}>
           <Text style={styles.sectionLabel}>
-            Vị trí hiện tại của trọ <Text style={styles.required}>*</Text>
+            Địa chỉ khu vực <Text style={styles.required}>*</Text>
+          </Text>
+          <Text style={styles.locationNote}>
+            Chọn đúng khu vực để bài xuất hiện khi người thuê lọc theo địa chỉ.
+          </Text>
+          <AdministrativeAreaPicker
+            value={administrativeArea}
+            onChange={setAdministrativeArea}
+          />
+
+          <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
+            Vị trí chính xác của phòng <Text style={styles.required}>*</Text>
           </Text>
 
           {/* GPS Location Button */}
           <TouchableOpacity
             style={styles.gpsBtn}
-            onPress={handleGetCurrentLocation}
+            onPress={() => handleGetCurrentLocation()}
             disabled={loadingLocation}
           >
             {loadingLocation ? (
@@ -871,8 +975,8 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
                 <MaterialIcons name="my-location" size={20} color="#00685f" />
                 <Text style={styles.gpsBtnText}>
                   {coords
-                    ? "Cập nhật lại tọa độ GPS hiện tại"
-                    : "Lấy vị trí GPS phòng trọ hiện tại"}
+                    ? "Lấy lại vị trí hiện tại"
+                    : "Dùng vị trí hiện tại làm vị trí phòng"}
                 </Text>
               </>
             )}
@@ -888,8 +992,9 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
             </Text>
           </TouchableOpacity>
           <Text style={styles.locationNote}>
-            Khoảng cách được tính từ tọa độ GPS hoặc điểm ghim. Địa chỉ tương
-            đối chỉ giúp người xem nhận biết vị trí.
+            GPS được lấy khi mở màn này. Nếu bạn đang ở nơi khác với phòng, hãy
+            chọn vị trí phòng trên bản đồ. Khoảng cách tìm kiếm tính từ ghim
+            này.
           </Text>
 
           <Text style={styles.subInputLabel}>

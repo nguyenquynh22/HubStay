@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  ActivityIndicator,
   View,
   Text,
   StyleSheet,
@@ -7,25 +8,67 @@ import {
   TextInput,
   Alert,
 } from "react-native";
+import { createAppointment } from "../../services/api";
 
 interface Props {
+  postId: number;
+  tenantId: number;
   onBack: () => void;
   onSubmitted: () => void;
 }
-export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
+export default function BookAppointmentModal({
+  postId,
+  tenantId,
+  onBack,
+  onSubmitted,
+}: Props) {
+  const [date, setDate] = useState("");
   const [time, setTime] = useState("");
   const [note, setNote] = useState("");
-  const submit = () => {
-    if (!time.trim()) {
-      Alert.alert(
-        "Chọn thời gian",
-        "Vui lòng nhập giờ bạn muốn đến xem phòng.",
-      );
+  const [submitting, setSubmitting] = useState(false);
+
+  const submit = async () => {
+    const dateValue = date.trim();
+    const timeValue = time.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateValue)) {
+      Alert.alert("Ngày chưa hợp lệ", "Nhập ngày theo định dạng YYYY-MM-DD.");
       return;
     }
-    Alert.alert("Đã gửi yêu cầu", "Người đăng sẽ xác nhận lịch hẹn của bạn.", [
-      { text: "Đóng", onPress: onSubmitted },
-    ]);
+    const parsedDate = new Date(`${dateValue}T00:00:00.000Z`);
+    if (
+      Number.isNaN(parsedDate.getTime()) ||
+      parsedDate.toISOString().slice(0, 10) !== dateValue
+    ) {
+      Alert.alert("Ngày chưa hợp lệ", "Kiểm tra lại ngày bạn muốn đến.");
+      return;
+    }
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(timeValue)) {
+      Alert.alert("Giờ chưa hợp lệ", "Nhập giờ đến theo định dạng HH:mm.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      await createAppointment({
+        post_id: postId,
+        tenant_id: tenantId,
+        appointment_date: dateValue,
+        appointment_time: timeValue,
+        note: note.trim() || undefined,
+      });
+      Alert.alert(
+        "Đã gửi yêu cầu",
+        "Người đăng sẽ xác nhận lịch hẹn của bạn.",
+        [{ text: "Đóng", onPress: onSubmitted }],
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Không gửi được yêu cầu",
+        error?.response?.data?.message || "Kiểm tra kết nối rồi thử lại.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
   return (
     <View style={styles.container}>
@@ -38,15 +81,25 @@ export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
       <View style={styles.content}>
         <Text style={styles.heading}>Chọn giờ bạn muốn đến</Text>
         <Text style={styles.sub}>
-          Người đăng có thể đón khách trong khoảng thời gian rảnh.
+          Chọn ngày và giờ đến đã thống nhất với người đăng qua chat.
         </Text>
+        <Text style={styles.label}>Ngày đến</Text>
+        <TextInput
+          value={date}
+          onChangeText={setDate}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#9AAAB0"
+          style={styles.input}
+          keyboardType="numbers-and-punctuation"
+        />
         <Text style={styles.label}>Giờ đến</Text>
         <TextInput
           value={time}
           onChangeText={setTime}
-          placeholder="Ví dụ: 18:30, ngày 20/10"
+          placeholder="HH:mm, ví dụ 18:30"
           placeholderTextColor="#9AAAB0"
           style={styles.input}
+          keyboardType="numbers-and-punctuation"
         />
         <Text style={styles.label}>Ghi chú (không bắt buộc)</Text>
         <TextInput
@@ -57,8 +110,16 @@ export default function BookAppointmentModal({ onBack, onSubmitted }: Props) {
           multiline
           style={[styles.input, styles.note]}
         />
-        <TouchableOpacity style={styles.button} onPress={submit}>
-          <Text style={styles.buttonText}>Gửi yêu cầu đặt lịch</Text>
+        <TouchableOpacity
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={submit}
+          disabled={submitting}
+        >
+          {submitting ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.buttonText}>Gửi yêu cầu đặt lịch</Text>
+          )}
         </TouchableOpacity>
       </View>
     </View>
@@ -107,5 +168,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 24,
   },
+  buttonDisabled: { opacity: 0.65 },
   buttonText: { color: "#FFF", fontWeight: "800" },
 });
