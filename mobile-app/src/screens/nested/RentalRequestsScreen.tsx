@@ -31,7 +31,7 @@ interface RentalRequest {
 
 interface Props {
   onBack?: () => void;
-  userId?: number;
+  userId: number;
 }
 
 const statusLabel: Record<RentalRequest["status"], string> = {
@@ -41,7 +41,7 @@ const statusLabel: Record<RentalRequest["status"], string> = {
   CANCELLED: "Đã hủy",
 };
 
-export default function RentalRequestsScreen({ onBack, userId = 1 }: Props) {
+export default function RentalRequestsScreen({ onBack, userId }: Props) {
   const [requests, setRequests] = useState<RentalRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<number | null>(null);

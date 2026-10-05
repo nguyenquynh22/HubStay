@@ -1,5 +1,6 @@
 ﻿const Repo = require("../repositories/posts.repository");
 const Notifications = require("../services/notifications.service");
+const ContentModeration = require("../services/content_moderation.service");
 
 module.exports = {
   getAll: async (req, res, next) => {
@@ -152,6 +153,16 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
+      if (
+        ContentModeration.findBlockedWord(
+          `${req.body.title || ""} ${req.body.description || ""}`,
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Tiêu đề hoặc mô tả chứa ngôn từ không phù hợp.",
+        });
+      }
       const areaCodes = [
         req.body.province_code,
         req.body.district_code,

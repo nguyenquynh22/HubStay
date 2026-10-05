@@ -19,7 +19,7 @@ import {
 interface Props {
   onBack?: () => void;
   onOpenVip?: () => void;
-  userId?: number;
+  userId: number;
 }
 
 const presets = [100000, 500000, 1000000];
@@ -27,7 +27,7 @@ const presets = [100000, 500000, 1000000];
 export default function PaymentSimulationScreen({
   onBack,
   onOpenVip,
-  userId = 1,
+  userId,
 }: Props) {
   const [amount, setAmount] = useState("500000");
   const [balance, setBalance] = useState(0);

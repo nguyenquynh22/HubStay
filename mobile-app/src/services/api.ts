@@ -1,5 +1,23 @@
 import api from "../api/axiosClient";
 
+export const setAuthToken = (token: string | null) => {
+  if (token) api.defaults.headers.common.Authorization = `Bearer ${token}`;
+  else delete api.defaults.headers.common.Authorization;
+};
+
+export const registerAccount = async (payload: {
+  full_name: string;
+  email: string;
+  phone?: string;
+  password: string;
+  role: "STUDENT" | "WORKER" | "LANDLORD";
+}) => (await api.post("/auth/register", payload)).data;
+
+export const loginAccount = async (payload: {
+  email: string;
+  password: string;
+}) => (await api.post("/auth/login", payload)).data;
+
 export interface AdministrativeUnit {
   code: number;
   name: string;

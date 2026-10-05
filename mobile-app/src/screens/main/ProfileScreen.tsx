@@ -19,9 +19,10 @@ interface Props {
   onOpenTransactionHistory?: () => void;
   onOpenNotifications?: () => void;
   onOpenRentalRequests?: () => void;
+  onLogout?: () => void;
   onOpenPaymentSimulation?: () => void;
   onOpenAppointments?: (mode: "landlord" | "tenant") => void;
-  userId?: number;
+  userId: number;
 }
 
 export default function ProfileScreen({
@@ -29,9 +30,10 @@ export default function ProfileScreen({
   onOpenTransactionHistory,
   onOpenNotifications,
   onOpenRentalRequests,
+  onLogout,
   onOpenPaymentSimulation,
   onOpenAppointments,
-  userId = 1,
+  userId,
 }: Props) {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
@@ -98,7 +100,7 @@ export default function ProfileScreen({
       {
         text: "Đăng xuất",
         style: "destructive",
-        onPress: () => console.log("Logged out"),
+        onPress: onLogout,
       },
     ]);
   };

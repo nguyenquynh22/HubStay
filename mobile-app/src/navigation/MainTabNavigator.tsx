@@ -24,6 +24,7 @@ interface Props {
   onOpenTransactionHistory: () => void;
   onOpenNotifications: () => void;
   onOpenRentalRequests: () => void;
+  onLogout: () => void;
   onOpenPaymentSimulation: () => void;
   onSelectPost: (post: any) => void;
   onOpenChat: (conversation: any) => void;
@@ -38,6 +39,7 @@ export const MainTabNavigator: React.FC<Props> = ({
   onOpenTransactionHistory,
   onOpenNotifications,
   onOpenRentalRequests,
+  onLogout,
   onOpenPaymentSimulation,
   onSelectPost,
   onOpenChat,
@@ -71,7 +73,7 @@ export const MainTabNavigator: React.FC<Props> = ({
           <ChatListScreen onOpenChat={onOpenChat} userId={userId} />
         )}
         {currentTab === "CREATE" && (
-          <CreatePostScreen onCreated={onOpenCreate} />
+          <CreatePostScreen onCreated={onOpenCreate} userId={userId} />
         )}
         {currentTab === "ACTIVITY" && (
           <MyActivityScreen
@@ -88,6 +90,7 @@ export const MainTabNavigator: React.FC<Props> = ({
             onOpenTransactionHistory={onOpenTransactionHistory}
             onOpenNotifications={onOpenNotifications}
             onOpenRentalRequests={onOpenRentalRequests}
+            onLogout={onLogout}
             onOpenPaymentSimulation={onOpenPaymentSimulation}
             onOpenAppointments={onOpenAppointments}
           />

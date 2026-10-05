@@ -19,10 +19,10 @@ interface VipPackage {
 
 interface Props {
   onBack?: () => void;
-  userId?: number;
+  userId: number;
 }
 
-export default function VipPackagesScreen({ onBack, userId = 1 }: Props) {
+export default function VipPackagesScreen({ onBack, userId }: Props) {
   const [packages, setPackages] = useState<VipPackage[]>([]);
   const [balance, setBalance] = useState(0);
   const [selected, setSelected] = useState("");

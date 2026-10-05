@@ -28,7 +28,20 @@ import {
 interface Props {
   onCreated: () => void;
   onBack?: () => void;
+  userId: number;
 }
+
+const blockedWords = [
+  "fuck",
+  "shit",
+  "bitch",
+  "địt",
+  "đụ",
+  "đéo",
+  "lồn",
+  "cặc",
+  "đĩ",
+];
 
 const normalizeSearch = (value: string) =>
   value
@@ -57,7 +70,7 @@ const parseCoordinates = (value: string) => {
   return { latitude, longitude };
 };
 
-export default function CreatePostScreen({ onCreated, onBack }: Props) {
+export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   const NativeMapView: any =
     Platform.OS === "web" ? null : require("react-native-maps").default;
   const NativeMapMarker: any =
@@ -535,6 +548,25 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
       Alert.alert("Thiếu thông tin", "Nhập tiêu đề và giá thuê.");
       return;
     }
+    const content = normalizeSearch(`${title} ${description}`)
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .split(/\s+/);
+    if (
+      blockedWords.some((word) =>
+        content.includes(
+          normalizeSearch(word)
+            .replace(/[^a-z0-9]+/g, " ")
+            .trim(),
+        ),
+      )
+    ) {
+      Alert.alert(
+        "Nội dung chưa phù hợp",
+        "Hãy chỉnh sửa tiêu đề hoặc mô tả trước khi đăng.",
+      );
+      return;
+    }
     if (images.length < 2) {
       Alert.alert(
         "Thiếu ảnh phòng",
@@ -563,7 +595,7 @@ export default function CreatePostScreen({ onCreated, onBack }: Props) {
     setSubmitting(true);
     try {
       await createPost({
-        user_id: 1,
+        user_id: userId,
         title: title.trim(),
         description: description.trim(),
         price: Number(price.replace(/[^0-9]/g, "")),

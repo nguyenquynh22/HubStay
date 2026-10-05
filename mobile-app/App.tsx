@@ -12,12 +12,17 @@ import PaymentSimulationScreen from "./src/screens/nested/PaymentSimulationScree
 import VipPackagesScreen from "./src/screens/nested/VipPackagesScreen";
 import NotificationsScreen from "./src/screens/nested/NotificationsScreen";
 import RentalRequestsScreen from "./src/screens/nested/RentalRequestsScreen";
+import LoginScreen from "./src/screens/auth/LoginScreen";
+import RegisterScreen from "./src/screens/auth/RegisterScreen";
 import { Alert } from "react-native";
-import { createConversation } from "./src/services/api";
-
-const CURRENT_USER_ID = 1; // Demo identity until a real login/session flow is connected.
+import { createConversation, setAuthToken } from "./src/services/api";
 
 export default function App() {
+  const [session, setSession] = useState<{ user: any; token: string } | null>(
+    null,
+  );
+  const [authMode, setAuthMode] = useState<"LOGIN" | "REGISTER">("LOGIN");
+  const currentUserId = Number(session?.user?.user_id || 0);
   const [currentNestedScreen, setCurrentNestedScreen] = useState<string | null>(
     null,
   );
@@ -27,11 +32,22 @@ export default function App() {
     "POST_DETAIL" | "CHAT_DETAIL"
   >("POST_DETAIL");
 
+  const handleAuthenticated = (user: any, token: string) => {
+    setAuthToken(token);
+    setSession({ user, token });
+  };
+
+  const logout = () => {
+    setAuthToken(null);
+    setSession(null);
+    setCurrentNestedScreen(null);
+  };
+
   const openPostChat = async () => {
     try {
       const result = await createConversation(
         Number(selectedPost?.post_id),
-        CURRENT_USER_ID,
+        currentUserId,
       );
       setSelectedConversation(result.data);
       setCurrentNestedScreen("CHAT_DETAIL");
@@ -43,6 +59,20 @@ export default function App() {
     }
   };
 
+  if (!session) {
+    return authMode === "LOGIN" ? (
+      <LoginScreen
+        onAuthenticated={handleAuthenticated}
+        onSwitchToRegister={() => setAuthMode("REGISTER")}
+      />
+    ) : (
+      <RegisterScreen
+        onAuthenticated={handleAuthenticated}
+        onSwitchToLogin={() => setAuthMode("LOGIN")}
+      />
+    );
+  }
+
   return (
     <>
       <StatusBar style="auto" />
@@ -50,24 +80,24 @@ export default function App() {
       {currentNestedScreen === "VERIFY" ? (
         <IdentityVerificationScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "APPOINTMENTS" ? (
         <ManageAppointmentsScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
           mode="landlord"
         />
       ) : currentNestedScreen === "MY_APPOINTMENTS" ? (
         <ManageAppointmentsScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
           mode="tenant"
         />
       ) : currentNestedScreen === "BOOK_APPOINTMENT" ? (
         <BookAppointmentModal
           postId={Number(selectedPost?.post_id)}
-          tenantId={CURRENT_USER_ID}
+          tenantId={currentUserId}
           onBack={() => setCurrentNestedScreen(bookingReturnScreen)}
           onSubmitted={() => setCurrentNestedScreen(bookingReturnScreen)}
         />
@@ -75,7 +105,7 @@ export default function App() {
         <PostDetailScreen
           post={selectedPost}
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
           onReport={() => setCurrentNestedScreen("REPORT")}
           onOpenChat={openPostChat}
           onNavigateToBooking={() => {
@@ -87,7 +117,7 @@ export default function App() {
         <ChatDetailScreen
           onBack={() => setCurrentNestedScreen(null)}
           conversation={selectedConversation}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
           onBookAppointment={() => {
             setBookingReturnScreen("CHAT_DETAIL");
             setSelectedPost({
@@ -106,28 +136,28 @@ export default function App() {
       ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
         <TransactionHistoryScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "PAYMENT_SIMULATION" ? (
         <PaymentSimulationScreen
           onBack={() => setCurrentNestedScreen(null)}
           onOpenVip={() => setCurrentNestedScreen("VIP_PACKAGES")}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "VIP_PACKAGES" ? (
         <VipPackagesScreen
           onBack={() => setCurrentNestedScreen("PAYMENT_SIMULATION")}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "NOTIFICATIONS" ? (
         <NotificationsScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "RENTAL_REQUESTS" ? (
         <RentalRequestsScreen
           onBack={() => setCurrentNestedScreen(null)}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
         />
       ) : (
         <MainTabNavigator
@@ -156,7 +186,8 @@ export default function App() {
             setSelectedConversation(conversation);
             setCurrentNestedScreen("CHAT_DETAIL");
           }}
-          userId={CURRENT_USER_ID}
+          userId={currentUserId}
+          onLogout={logout}
           onOpenCreate={() => setCurrentNestedScreen(null)}
         />
       )}

@@ -14,7 +14,7 @@ import { getVerificationsByUser, submitVerification } from "../../services/api";
 
 interface Props {
   onBack: () => void;
-  userId?: number;
+  userId: number;
   onVerified?: () => void;
 }
 
@@ -22,7 +22,7 @@ const accountTypes = ["STUDENT", "WORKER", "LANDLORD"] as const;
 
 export default function IdentityVerificationScreen({
   onBack,
-  userId = 1,
+  userId,
   onVerified,
 }: Props) {
   const [accountType, setAccountType] =

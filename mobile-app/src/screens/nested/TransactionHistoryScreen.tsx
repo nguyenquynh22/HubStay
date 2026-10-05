@@ -23,13 +23,10 @@ interface Transaction {
 
 interface Props {
   onBack?: () => void;
-  userId?: number;
+  userId: number;
 }
 
-export default function TransactionHistoryScreen({
-  onBack,
-  userId = 1,
-}: Props) {
+export default function TransactionHistoryScreen({ onBack, userId }: Props) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
 

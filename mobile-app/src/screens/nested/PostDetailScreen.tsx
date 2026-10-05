@@ -30,7 +30,7 @@ interface Props {
   onReport?: () => void;
   onOpenChat: () => void;
   post?: any;
-  userId?: number;
+  userId: number;
 }
 
 export default function PostDetailScreen({
@@ -39,7 +39,7 @@ export default function PostDetailScreen({
   onReport,
   onOpenChat,
   post,
-  userId = 1,
+  userId,
 }: Props) {
   const currentPost = post
     ? {

@@ -47,7 +47,9 @@ const subscriptionsRoute = require("./routes/subscriptions.route");
 const chatRoute = require("./routes/chat.route");
 const administrativeAreasRouter = require("./routes/administrative_areas.route");
 const notificationsRouter = require("./routes/notifications.route");
+const authRouter = require("./routes/auth.route");
 
+app.use("/api/auth", authRouter);
 app.use("/api/rental-requests", rentalRequestsRoute);
 app.use("/api/transactions", transactionsRoute);
 app.use("/api/subscriptions", subscriptionsRoute);

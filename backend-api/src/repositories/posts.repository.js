@@ -87,6 +87,39 @@ class postsRepository {
       data.enable_booking ?? 1,
     ];
 
+    const payloadImages = Array.isArray(data.images)
+      ? data.images.filter(Boolean)
+      : [];
+    if (payloadImages.length > 6) {
+      throw new Error("Mỗi bài đăng chỉ được tải tối đa 6 ảnh.");
+    }
+    let totalImageBytes = 0;
+    for (const imageUrl of payloadImages) {
+      if (typeof imageUrl !== "string") {
+        throw new Error("Định dạng ảnh không hợp lệ.");
+      }
+      const dataUri = imageUrl.match(
+        /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
+      );
+      if (imageUrl.startsWith("data:") && !dataUri) {
+        throw new Error(
+          "Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP; video không được hỗ trợ.",
+        );
+      }
+      if (dataUri) {
+        const imageBytes = Buffer.from(dataUri[2], "base64").length;
+        if (!imageBytes || imageBytes > 8 * 1024 * 1024) {
+          throw new Error("Mỗi ảnh không được vượt quá 8 MB.");
+        }
+        totalImageBytes += imageBytes;
+      } else if (/\.(mp4|mov|m4v|webm|avi)(?:[?#].*)?$/i.test(imageUrl)) {
+        throw new Error("Video không được hỗ trợ trong bài đăng.");
+      }
+    }
+    if (totalImageBytes > 30 * 1024 * 1024) {
+      throw new Error("Tổng dung lượng ảnh không được vượt quá 30 MB.");
+    }
+
     const [result] = await db.query(sql, values);
     const storedImages = [];
     if (Array.isArray(data.images)) {

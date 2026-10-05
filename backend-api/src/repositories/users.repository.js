@@ -13,6 +13,22 @@ class usersRepository {
     return rows[0] || null;
   }
 
+  static async getByEmail(email) {
+    const [rows] = await db.query(
+      "SELECT * FROM users WHERE email = ? LIMIT 1",
+      [email],
+    );
+    return rows[0] || null;
+  }
+
+  static async getByPhone(phone) {
+    const [rows] = await db.query(
+      "SELECT * FROM users WHERE phone = ? LIMIT 1",
+      [phone],
+    );
+    return rows[0] || null;
+  }
+
   // Khai báo rõ ràng các cột INSERT để tránh bị lọt key thừa gây lỗi SQL
   static async create(data) {
     const sql = `

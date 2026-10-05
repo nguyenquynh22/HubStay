@@ -25,10 +25,10 @@ interface NotificationItem {
 
 interface Props {
   onBack?: () => void;
-  userId?: number;
+  userId: number;
 }
 
-export default function NotificationsScreen({ onBack, userId = 1 }: Props) {
+export default function NotificationsScreen({ onBack, userId }: Props) {
   const [items, setItems] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
