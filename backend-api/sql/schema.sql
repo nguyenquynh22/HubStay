@@ -279,4 +279,21 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   INDEX `idx_notifications_user_read_created` (`user_id`, `is_read`, `created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-SELECT * FROM users;
+-- =================================================================
+-- 15. BẢNG vip_packages (Cấu hình gói VIP)
+-- =================================================================
+CREATE TABLE IF NOT EXISTS `vip_packages` (
+  `package_id` INT AUTO_INCREMENT PRIMARY KEY,
+  `package_name` VARCHAR(100) NOT NULL UNIQUE,
+  `display_name` VARCHAR(150) NOT NULL,
+  `description` TEXT DEFAULT NULL,
+  `price` DECIMAL(12, 2) NOT NULL,
+  `duration_days` INT NOT NULL,
+  `benefits` JSON NOT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `sort_order` INT NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX `idx_vip_packages_active_order` (`is_active`, `sort_order`, `price`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

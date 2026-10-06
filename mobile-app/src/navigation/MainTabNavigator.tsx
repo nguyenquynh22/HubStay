@@ -68,7 +68,13 @@ export const MainTabNavigator: React.FC<Props> = ({
       />
 
       <View style={styles.body}>
-        {currentTab === "HOME" && <HomeScreen onSelectPost={onSelectPost} />}
+        {currentTab === "HOME" && (
+          <HomeScreen
+            onSelectPost={onSelectPost}
+            userId={userId}
+            onOpenNotifications={onOpenNotifications}
+          />
+        )}
         {currentTab === "CHAT" && (
           <ChatListScreen onOpenChat={onOpenChat} userId={userId} />
         )}

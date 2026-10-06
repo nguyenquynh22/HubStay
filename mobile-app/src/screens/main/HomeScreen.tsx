@@ -15,12 +15,15 @@ import AdministrativeAreaPicker from "../../components/AdministrativeAreaPicker"
 import {
   AdministrativeAreaSelection,
   getLandmarks,
+  getNotifications,
   resolveImageUrl,
   searchPosts,
 } from "../../services/api";
 
 interface Props {
   onSelectPost: (post: any) => void;
+  userId: number;
+  onOpenNotifications: () => void;
 }
 
 const normalize = (value: string) =>
@@ -39,7 +42,11 @@ const normalizeAreaName = (value: string) =>
     "",
   );
 
-export default function HomeScreen({ onSelectPost }: Props) {
+export default function HomeScreen({
+  onSelectPost,
+  userId,
+  onOpenNotifications,
+}: Props) {
   const [landmarks, setLandmarks] = useState<any[]>([]);
   const [landmark, setLandmark] = useState<any>(null);
   const [posts, setPosts] = useState<any[]>([]);
@@ -53,6 +60,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const areaTerms = useMemo(
     () =>
@@ -97,6 +105,18 @@ export default function HomeScreen({ onSelectPost }: Props) {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    getNotifications(userId)
+      .then((response) => {
+        setUnreadCount(
+          (response.data || []).filter((item: any) => !item.is_read).length,
+        );
+      })
+      .catch(() => undefined);
+  }, [userId]);
 
   useEffect(() => {
     if (
@@ -192,13 +212,23 @@ export default function HomeScreen({ onSelectPost }: Props) {
           <Text style={styles.brand}>⌂ HubStay</Text>
           <Text style={styles.slogan}>Tìm trọ & ở ghép sinh viên</Text>
         </View>
-        <MaterialIcons name="location-searching" size={25} color="#00685f" />
+        <TouchableOpacity onPress={onOpenNotifications}>
+          <View style={styles.notificationButton}>
+            <MaterialIcons name="notifications" size={24} color="#00685f" />
+            {!!unreadCount && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{unreadCount}</Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
       </View>
       <View style={styles.controls}>
         <Text style={styles.label}>KHU VỰC (KHÔNG BẮT BUỘC)</Text>
         <AdministrativeAreaPicker value={area} onChange={setArea} />
         <Text style={styles.helper}>
-          Có thể lọc theo quận/huyện, phường/xã hoặc chọn địa điểm để tìm theo khoảng cách.
+          Có thể lọc theo quận/huyện, phường/xã hoặc chọn địa điểm để tìm theo
+          khoảng cách.
         </Text>
         <Text style={[styles.label, styles.landmarkLabel]}>
           TÌM NHANH THEO ĐỊA ĐIỂM
@@ -390,6 +420,20 @@ const styles = StyleSheet.create({
   },
   brand: { fontSize: 22, fontWeight: "800", color: "#00685f" },
   slogan: { fontSize: 12, color: "#64748B" },
+  notificationButton: { position: "relative", padding: 6 },
+  notificationBadge: {
+    position: "absolute",
+    right: 0,
+    top: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#dc2626",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 4,
+  },
+  notificationBadgeText: { color: "white", fontSize: 10, fontWeight: "700" },
   controls: {
     backgroundColor: "white",
     paddingHorizontal: 16,

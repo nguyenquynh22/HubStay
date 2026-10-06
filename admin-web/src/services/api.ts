@@ -1,6 +1,14 @@
-import type { CreateVipSubscriptionInput, ReportPeriod, VipRevenueReport } from "@/types";
+import type {
+  CreateVipSubscriptionInput,
+  ReportPeriod,
+  VipPackage,
+  VipPackagePayload,
+  VipRevenueReport,
+} from "@/types";
 
-const apiBaseUrl = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api").replace(/\/$/, "");
+const apiBaseUrl = (
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api"
+).replace(/\/$/, "");
 
 export type UserRole = "STUDENT" | "WORKER" | "LANDLORD";
 export type UserStatus = "ACTIVE" | "WARNING" | "BANNED";
@@ -39,7 +47,14 @@ export interface UserListResponse {
   total: number;
   page: number;
   limit: number;
-  summary: { total: number; active: number; unverified: number; restricted: number; students: number; landlords: number };
+  summary: {
+    total: number;
+    active: number;
+    unverified: number;
+    restricted: number;
+    students: number;
+    landlords: number;
+  };
 }
 
 export interface AdminDashboard {
@@ -83,7 +98,12 @@ export interface AdminPost {
   status: string;
   verified: boolean;
   imageUrl: string | null;
-  author: { name: string; email: string; phone: string | null; initials: string };
+  author: {
+    name: string;
+    email: string;
+    phone: string | null;
+    initials: string;
+  };
   createdAt: string;
 }
 
@@ -147,22 +167,39 @@ export interface AdminSubscription {
   avatar_url: string | null;
 }
 
-export type UserPayload = Partial<Pick<AdminUser,
-  "full_name" | "email" | "phone" | "role" | "avatar_url" | "is_verified" | "is_vip" |
-  "vip_expires_at" | "status" | "banned_until" | "ban_reason"
->> & { password?: string; password_setup?: "ACTIVATION_LINK" | "SET_PASSWORD" };
+export type UserPayload = Partial<
+  Pick<
+    AdminUser,
+    | "full_name"
+    | "email"
+    | "phone"
+    | "role"
+    | "avatar_url"
+    | "is_verified"
+    | "is_vip"
+    | "vip_expires_at"
+    | "status"
+    | "banned_until"
+    | "ban_reason"
+  >
+> & { password?: string; password_setup?: "ACTIVATION_LINK" | "SET_PASSWORD" };
 
 export class ApiError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
     super(message);
     this.name = "ApiError";
   }
 }
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const token = typeof window === "undefined"
-    ? null
-    : window.localStorage.getItem("admin_token") ?? window.sessionStorage.getItem("admin_token");
+  const token =
+    typeof window === "undefined"
+      ? null
+      : (window.localStorage.getItem("admin_token") ??
+        window.sessionStorage.getItem("admin_token"));
   const response = await fetch(apiBaseUrl + path, {
     ...options,
     headers: {
@@ -175,7 +212,10 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(body?.message ?? "Không thể tải dữ liệu từ máy chủ.", response.status);
+    throw new ApiError(
+      body?.message ?? "Không thể tải dữ liệu từ máy chủ.",
+      response.status,
+    );
   }
 
   if (response.status === 204) return undefined as T;
@@ -183,9 +223,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 async function uploadAvatar(file: File): Promise<string> {
-  const token = typeof window === "undefined"
-    ? null
-    : window.localStorage.getItem("admin_token") ?? window.sessionStorage.getItem("admin_token");
+  const token =
+    typeof window === "undefined"
+      ? null
+      : (window.localStorage.getItem("admin_token") ??
+        window.sessionStorage.getItem("admin_token"));
   const response = await fetch(apiBaseUrl + "/uploads/avatar", {
     method: "POST",
     headers: {
@@ -196,10 +238,16 @@ async function uploadAvatar(file: File): Promise<string> {
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new ApiError(body?.message ?? "Không thể tải ảnh lên máy chủ.", response.status);
+    throw new ApiError(
+      body?.message ?? "Không thể tải ảnh lên máy chủ.",
+      response.status,
+    );
   }
   if (typeof body?.url !== "string") {
-    throw new ApiError("Máy chủ không trả về đường dẫn ảnh hợp lệ.", response.status);
+    throw new ApiError(
+      "Máy chủ không trả về đường dẫn ảnh hợp lệ.",
+      response.status,
+    );
   }
   return body.url;
 }
@@ -208,18 +256,26 @@ async function verificationImage(
   id: number,
   kind: "front" | "back" | "selfie",
 ): Promise<Blob> {
-  const token = typeof window === "undefined"
-    ? null
-    : window.localStorage.getItem("admin_token") ?? window.sessionStorage.getItem("admin_token");
-  const response = await fetch(apiBaseUrl + "/admin/verifications/" + id + "/images/" + kind, {
-    headers: {
-      ...(token ? { Authorization: "Bearer " + token } : {}),
+  const token =
+    typeof window === "undefined"
+      ? null
+      : (window.localStorage.getItem("admin_token") ??
+        window.sessionStorage.getItem("admin_token"));
+  const response = await fetch(
+    apiBaseUrl + "/admin/verifications/" + id + "/images/" + kind,
+    {
+      headers: {
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+      },
+      cache: "no-store",
     },
-    cache: "no-store",
-  });
+  );
   if (!response.ok) {
     const body = await response.json().catch(() => null);
-    throw new ApiError(body?.message ?? "Không thể tải ảnh xác minh.", response.status);
+    throw new ApiError(
+      body?.message ?? "Không thể tải ảnh xác minh.",
+      response.status,
+    );
   }
   return response.blob();
 }
@@ -227,11 +283,27 @@ async function verificationImage(
 export const adminApi = {
   health: () => request<{ status: string }>("/health"),
   login: (identifier: string, password: string) =>
-    request<{ success: boolean; token: string; admin: { id: number; name: string; email: string | null; phone: string | null; role: string } }>("/admin/login", {
+    request<{
+      success: boolean;
+      token: string;
+      admin: {
+        id: number;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        role: string;
+      };
+    }>("/admin/login", {
       method: "POST",
       body: JSON.stringify({ identifier, password }),
     }),
-  register: (payload: { full_name: string; email?: string; phone?: string; password: string; role: UserRole }) =>
+  register: (payload: {
+    full_name: string;
+    email?: string;
+    phone?: string;
+    password: string;
+    role: UserRole;
+  }) =>
     request<{ success: boolean; message: string }>("/auth/register", {
       method: "POST",
       body: JSON.stringify(payload),
@@ -241,48 +313,129 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify({ token, password }),
     }),
-  adminSession: () => request<{ success: boolean; admin: { userId: number; name: string; email: string | null; phone: string | null; role: string } }>("/admin/session"),
-  dashboard: (period: ReportPeriod = "30d") => request<AdminDashboard>("/admin/dashboard?period=" + period),
-  users: (filters: { search?: string; role?: string; status?: string; verified?: string; page?: number; limit?: number } = {}) => {
+  adminSession: () =>
+    request<{
+      success: boolean;
+      admin: {
+        userId: number;
+        name: string;
+        email: string | null;
+        phone: string | null;
+        role: string;
+      };
+    }>("/admin/session"),
+  dashboard: (period: ReportPeriod = "30d") =>
+    request<AdminDashboard>("/admin/dashboard?period=" + period),
+  users: (
+    filters: {
+      search?: string;
+      role?: string;
+      status?: string;
+      verified?: string;
+      page?: number;
+      limit?: number;
+    } = {},
+  ) => {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(filters)) {
       if (value !== undefined && value !== "") query.set(key, String(value));
     }
     return request<UserListResponse>("/users?" + query.toString());
   },
-  user: (id: number) => request<{ success: boolean; data: AdminUser }>("/users/admin/" + id),
-  createUser: (payload: UserPayload) => request<{
-    success: boolean;
-    data: AdminUser;
-    activation_token?: string;
-    email_sent?: boolean;
-    email_error?: string;
-  }>("/users/admin", { method: "POST", body: JSON.stringify(payload) }),
+  user: (id: number) =>
+    request<{ success: boolean; data: AdminUser }>("/users/admin/" + id),
+  createUser: (payload: UserPayload) =>
+    request<{
+      success: boolean;
+      data: AdminUser;
+      activation_token?: string;
+      email_sent?: boolean;
+      email_error?: string;
+    }>("/users/admin", { method: "POST", body: JSON.stringify(payload) }),
   uploadAvatar,
-  updateUser: (id: number, payload: UserPayload) => request<{ success: boolean; data: AdminUser }>("/users/admin/" + id, { method: "PUT", body: JSON.stringify(payload) }),
-  deleteUser: (id: number) => request<{ success: boolean }>("/users/admin/" + id, { method: "DELETE" }),
-  verifications: () => request<{ items: AdminVerification[] }>("/admin/verifications"),
+  updateUser: (id: number, payload: UserPayload) =>
+    request<{ success: boolean; data: AdminUser }>("/users/admin/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteUser: (id: number) =>
+    request<{ success: boolean }>("/users/admin/" + id, { method: "DELETE" }),
+  verifications: () =>
+    request<{ items: AdminVerification[] }>("/admin/verifications"),
   verificationImage,
-  reviewVerification: (id: number, status: "APPROVED" | "REJECTED", reason?: string) =>
-    request("/admin/verifications/" + id, { method: "PATCH", body: JSON.stringify({ status, reason }) }),
+  reviewVerification: (
+    id: number,
+    status: "APPROVED" | "REJECTED",
+    reason?: string,
+  ) =>
+    request("/admin/verifications/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ status, reason }),
+    }),
   posts: () => request<{ items: AdminPost[] }>("/admin/posts"),
   createPost: (payload: AdminPostPayload & { author_id: number }) =>
-    request<{ success: boolean; id: number }>("/admin/posts", { method: "POST", body: JSON.stringify(payload) }),
-  updatePost: (id: number, payload: Partial<AdminPostPayload> & { is_approved?: boolean }) =>
-    request<{ success: boolean }>("/admin/posts/" + id, { method: "PATCH", body: JSON.stringify(payload) }),
+    request<{ success: boolean; id: number }>("/admin/posts", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updatePost: (
+    id: number,
+    payload: Partial<AdminPostPayload> & { is_approved?: boolean },
+  ) =>
+    request<{ success: boolean }>("/admin/posts/" + id, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   reports: () => request<{ items: AdminReport[] }>("/admin/reports"),
   reviewReport: (id: number, status: "RESOLVED" | "DISMISSED") =>
-    request("/admin/reports/" + id, { method: "PATCH", body: JSON.stringify({ status }) }),
+    request("/admin/reports/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
   landmarks: () => request<{ items: AdminLandmark[] }>("/admin/landmarks"),
-  createLandmark: (payload: unknown) => request("/admin/landmarks", { method: "POST", body: JSON.stringify(payload) }),
+  createLandmark: (payload: unknown) =>
+    request("/admin/landmarks", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   updateLandmark: (id: number, payload: unknown) =>
-    request<{ success: boolean }>("/admin/landmarks/" + id, { method: "PUT", body: JSON.stringify(payload) }),
-  deleteLandmark: (id: number) => request("/admin/landmarks/" + id, { method: "DELETE" }),
-  transactions: () => request<{ items: AdminTransaction[] }>("/admin/transactions"),
+    request<{ success: boolean }>("/admin/landmarks/" + id, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deleteLandmark: (id: number) =>
+    request("/admin/landmarks/" + id, { method: "DELETE" }),
+  transactions: () =>
+    request<{ items: AdminTransaction[] }>("/admin/transactions"),
   updateTransaction: (id: number, status: AdminTransaction["status"]) =>
-    request("/admin/transactions/" + id, { method: "PATCH", body: JSON.stringify({ status }) }),
-  subscriptions: () => request<{ items: AdminSubscription[] }>("/admin/subscriptions"),
-  vipRevenue: (period: ReportPeriod) => request<VipRevenueReport>("/admin/vip-revenue?period=" + period),
+    request("/admin/transactions/" + id, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    }),
+  subscriptions: () =>
+    request<{ items: AdminSubscription[] }>("/admin/subscriptions"),
+  vipPackages: () =>
+    request<{ success: boolean; data: VipPackage[] }>("/vip-packages/admin"),
+  createVipPackage: (payload: VipPackagePayload) =>
+    request<{ success: boolean; data: VipPackage }>("/vip-packages/admin", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateVipPackage: (id: number, payload: Partial<VipPackagePayload>) =>
+    request<{ success: boolean; data: VipPackage }>(
+      "/vip-packages/admin/" + id,
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
+  deleteVipPackage: (id: number) =>
+    request<{ success: boolean; message: string }>(
+      "/vip-packages/admin/" + id,
+      { method: "DELETE" },
+    ),
+  vipRevenue: (period: ReportPeriod) =>
+    request<VipRevenueReport>("/admin/vip-revenue?period=" + period),
   createVipSubscription: (payload: CreateVipSubscriptionInput) =>
-    request<{ id: number; transactionCode: string }>("/admin/vip-subscriptions", { method: "POST", body: JSON.stringify(payload) }),
+    request<{ id: number; transactionCode: string }>(
+      "/admin/vip-subscriptions",
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
 };

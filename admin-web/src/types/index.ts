@@ -43,6 +43,31 @@ export interface VipRevenueReport {
   subscriptions: VipSubscription[];
 }
 
+export interface VipPackage {
+  package_id: number;
+  package_name: string;
+  display_name: string;
+  description: string | null;
+  price: number;
+  duration_days: number;
+  benefits: string[];
+  is_active: number;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VipPackagePayload {
+  package_name: string;
+  display_name: string;
+  description?: string | null;
+  price: number;
+  duration_days: number;
+  benefits: string[];
+  is_active?: number;
+  sort_order?: number;
+}
+
 export interface CreateVipSubscriptionInput {
   userId: number;
   packageName: string;

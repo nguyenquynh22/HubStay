@@ -40,6 +40,7 @@ export default function App() {
   const logout = () => {
     setAuthToken(null);
     setSession(null);
+    setAuthMode("LOGIN");
     setCurrentNestedScreen(null);
   };
 
@@ -132,6 +133,8 @@ export default function App() {
       ) : currentNestedScreen === "REPORT" ? (
         <ReportPostScreen
           onBack={() => setCurrentNestedScreen("POST_DETAIL")}
+          postId={Number(selectedPost?.post_id)}
+          userId={currentUserId}
         />
       ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
         <TransactionHistoryScreen

@@ -1,30 +1,33 @@
 const Repo = require("../repositories/subscriptions.repository");
 const UsersRepo = require("../repositories/users.repository");
+const VipPackagesRepository = require("../repositories/vip_packages.repository");
 const crypto = require("crypto");
 const Notifications = require("../services/notifications.service");
 
-const packages = () => [
-  {
-    package_name: "VIP_1_MONTH",
-    months: 1,
-    price: Number(process.env.VIP_1_MONTH_PRICE || 0),
-  },
-  {
-    package_name: "VIP_1_YEAR",
-    months: 12,
-    price: Number(process.env.VIP_1_YEAR_PRICE || 0),
-  },
-];
+const getPackages = async () => {
+  const packages = await VipPackagesRepository.findActive();
+  return packages.map((item) => ({
+    package_id: item.package_id,
+    package_name: item.package_name,
+    display_name: item.display_name,
+    description: item.description,
+    benefits: item.benefits,
+    months: Math.max(1, Math.round(item.duration_days / 30)),
+    duration_days: Number(item.duration_days),
+    price: Number(item.price),
+    is_active: Number(item.is_active) === 1,
+  }));
+};
 
 module.exports = {
   getPackages: async (req, res) => {
-    res.json({ success: true, data: packages() });
+    res.json({ success: true, data: await getPackages() });
   },
 
   purchase: async (req, res, next) => {
     try {
       const user_id = Number(req.body.user_id);
-      const selectedPackage = packages().find(
+      const selectedPackage = (await getPackages()).find(
         (item) => item.package_name === req.body.package_name,
       );
       if (
@@ -38,9 +41,13 @@ module.exports = {
           message: "Gói VIP chưa hợp lệ hoặc chưa cấu hình giá",
         });
       }
+      const endDate = new Date();
+      endDate.setDate(endDate.getDate() + selectedPackage.duration_days);
       const result = await Repo.purchaseWithWallet({
         user_id,
         ...selectedPackage,
+        months: selectedPackage.months,
+        end_date: endDate,
         transaction_code: `VIP-${crypto.randomUUID()}`,
       });
       if (result.error) {
@@ -65,7 +72,7 @@ module.exports = {
         user_id,
         "VIP_PURCHASE_SUCCESS",
         "Đăng ký VIP thành công",
-        `Gói ${selectedPackage.months} tháng đã được kích hoạt.`,
+        `${selectedPackage.display_name} đã được kích hoạt. Bạn sẽ nhận: ${selectedPackage.benefits.join("; ") || "ưu tiên hiển thị"}.`,
         { subscription_id: result.subscription_id },
       );
       res.status(201).json({
