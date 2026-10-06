@@ -29,6 +29,13 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+app.get("/", (req, res) => {
+  res.json({ success: true, service: "HubStay API", api_prefix: "/api" });
+});
+app.get("/health", (req, res) => {
+  res.json({ success: true, status: "ok" });
+});
+
 // Import các Routes
 const appointmentsRouter = require("./routes/appointments.route");
 const landlord_availabilityRouter = require("./routes/landlord_availability.route");

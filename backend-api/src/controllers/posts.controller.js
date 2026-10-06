@@ -211,6 +211,9 @@ module.exports = {
         data: newItem,
       });
     } catch (err) {
+      if (err.code === "INVALID_POST_INPUT") {
+        return res.status(400).json({ success: false, message: err.message });
+      }
       next(err);
     }
   },

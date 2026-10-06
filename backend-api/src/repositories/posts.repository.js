@@ -4,6 +4,9 @@ const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 
+const invalidPostInput = (message) =>
+  Object.assign(new Error(message), { code: "INVALID_POST_INPUT" });
+
 class postsRepository {
   static calculateDistanceKm(fromLat, fromLng, toLat, toLng) {
     const earthRadiusKm = 6371;
@@ -91,33 +94,33 @@ class postsRepository {
       ? data.images.filter(Boolean)
       : [];
     if (payloadImages.length > 6) {
-      throw new Error("Mỗi bài đăng chỉ được tải tối đa 6 ảnh.");
+      throw invalidPostInput("Mỗi bài đăng chỉ được tải tối đa 6 ảnh.");
     }
     let totalImageBytes = 0;
     for (const imageUrl of payloadImages) {
       if (typeof imageUrl !== "string") {
-        throw new Error("Định dạng ảnh không hợp lệ.");
+        throw invalidPostInput("Định dạng ảnh không hợp lệ.");
       }
       const dataUri = imageUrl.match(
         /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
       );
       if (imageUrl.startsWith("data:") && !dataUri) {
-        throw new Error(
+        throw invalidPostInput(
           "Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP; video không được hỗ trợ.",
         );
       }
       if (dataUri) {
         const imageBytes = Buffer.from(dataUri[2], "base64").length;
         if (!imageBytes || imageBytes > 8 * 1024 * 1024) {
-          throw new Error("Mỗi ảnh không được vượt quá 8 MB.");
+          throw invalidPostInput("Mỗi ảnh không được vượt quá 8 MB.");
         }
         totalImageBytes += imageBytes;
       } else if (/\.(mp4|mov|m4v|webm|avi)(?:[?#].*)?$/i.test(imageUrl)) {
-        throw new Error("Video không được hỗ trợ trong bài đăng.");
+        throw invalidPostInput("Video không được hỗ trợ trong bài đăng.");
       }
     }
     if (totalImageBytes > 30 * 1024 * 1024) {
-      throw new Error("Tổng dung lượng ảnh không được vượt quá 30 MB.");
+      throw invalidPostInput("Tổng dung lượng ảnh không được vượt quá 30 MB.");
     }
 
     const [result] = await db.query(sql, values);
@@ -139,7 +142,7 @@ class postsRepository {
           }[dataUri[1]];
           const buffer = Buffer.from(dataUri[2], "base64");
           if (!buffer.length || buffer.length > 8 * 1024 * 1024)
-            throw new Error("Image is invalid or larger than 8 MB.");
+            throw invalidPostInput("Mỗi ảnh không được vượt quá 8 MB.");
           const filename = `${crypto.randomUUID()}.${extension}`;
           const directory = path.join(__dirname, "../../uploads/posts");
           await fs.mkdir(directory, { recursive: true });
@@ -151,7 +154,7 @@ class postsRepository {
           typeof imageUrl !== "string" ||
           imageUrl.startsWith("data:")
         ) {
-          throw new Error("Unsupported image format.");
+          throw invalidPostInput("Định dạng ảnh không được hỗ trợ.");
         }
         await db.query(
           "INSERT INTO post_images (post_id, image_url, is_cover) VALUES (?, ?, ?)",
