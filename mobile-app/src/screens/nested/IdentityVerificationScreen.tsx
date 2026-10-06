@@ -2,14 +2,15 @@ import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import { getVerificationsByUser, submitVerification } from "../../services/api";
 
 interface Props {
@@ -20,6 +21,11 @@ interface Props {
 
 const accountTypes = ["STUDENT", "WORKER", "LANDLORD"] as const;
 
+type KycImage = {
+  dataUri: string;
+  previewUri: string;
+};
+
 export default function IdentityVerificationScreen({
   onBack,
   userId,
@@ -27,11 +33,16 @@ export default function IdentityVerificationScreen({
 }: Props) {
   const [accountType, setAccountType] =
     useState<(typeof accountTypes)[number]>("STUDENT");
-  const [frontUrl, setFrontUrl] = useState("");
-  const [backUrl, setBackUrl] = useState("");
+  const [frontImage, setFrontImage] = useState<KycImage | null>(null);
+  const [backImage, setBackImage] = useState<KycImage | null>(null);
+  const [selfieImage, setSelfieImage] = useState<KycImage | null>(null);
   const [request, setRequest] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [submitFeedback, setSubmitFeedback] = useState<{
+    kind: "success" | "error";
+    message: string;
+  } | null>(null);
 
   const refresh = async () => {
     const response = await getVerificationsByUser(userId);
@@ -46,31 +57,137 @@ export default function IdentityVerificationScreen({
   }, [userId]);
 
   const submit = async () => {
-    if (!frontUrl.trim()) {
-      Alert.alert("Thiếu giấy tờ", "Vui lòng cung cấp liên kết ảnh mặt trước.");
+    if (submitting) return;
+    setSubmitFeedback(null);
+    if (
+      !Number.isInteger(userId) ||
+      userId < 1 ||
+      !accountTypes.includes(accountType) ||
+      !frontImage ||
+      !selfieImage
+    ) {
+      const missingFields = [
+        !Number.isInteger(userId) || userId < 1 ? "tài khoản đăng nhập hợp lệ" : "",
+        !accountTypes.includes(accountType) ? "loại tài khoản" : "",
+        !frontImage ? "ảnh mặt trước giấy tờ" : "",
+        !selfieImage ? "ảnh chân dung" : "",
+      ].filter(Boolean);
+      const message = `Vui lòng bổ sung: ${missingFields.join(", ")}.`;
+      setSubmitFeedback({ kind: "error", message });
+      Alert.alert("Hồ sơ chưa đầy đủ", message);
       return;
     }
     setSubmitting(true);
     try {
-      await submitVerification({
+      const response = await submitVerification({
         user_id: userId,
         account_type: accountType,
-        front_card_url: frontUrl.trim(),
-        back_card_url: backUrl.trim() || null,
+        front_image: frontImage.dataUri,
+        back_image: backImage?.dataUri ?? null,
+        selfie_image: selfieImage.dataUri,
       });
-      await refresh();
-      Alert.alert(
-        "Đã gửi yêu cầu",
-        "Hồ sơ KYC đang chờ quản trị viên xét duyệt.",
-      );
+      const successMessage =
+        response?.message || "Hồ sơ KYC đã được gửi và đang chờ xét duyệt.";
+      setSubmitFeedback({ kind: "success", message: successMessage });
+      try {
+        await refresh();
+      } catch (refreshError) {
+        console.error("[KYC] Gửi hồ sơ thành công nhưng không tải lại được trạng thái.", refreshError);
+        setSubmitFeedback({
+          kind: "success",
+          message: `${successMessage} Không tải lại được trạng thái; hãy mở lại màn hình sau.`,
+        });
+      }
     } catch (error: any) {
+      const status = error?.response?.status;
+      const serverMessage = error?.response?.data?.message;
+      const message = serverMessage
+        ? `HTTP ${status ?? "?"}: ${serverMessage}`
+        : status
+          ? `Máy chủ trả lỗi HTTP ${status}. Vui lòng báo quản trị viên kèm mã lỗi này.`
+          : "Không kết nối được máy chủ. Kiểm tra mạng hoặc địa chỉ API rồi thử lại.";
+      console.error("[KYC] Gửi hồ sơ thất bại", {
+        userId,
+        accountType,
+        httpStatus: status ?? null,
+        response: error?.response?.data ?? null,
+        message: error?.message,
+      });
+      console.error(
+        "[KYC] Nội dung phản hồi API:",
+        JSON.stringify(error?.response?.data ?? null),
+      );
+      setSubmitFeedback({ kind: "error", message });
       Alert.alert(
         "Không gửi được",
-        error?.response?.data?.message ||
-          "Kiểm tra liên kết giấy tờ và thử lại.",
+        message,
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const pickKycImage = async (
+    setImage: React.Dispatch<React.SetStateAction<KycImage | null>>,
+    source: "camera" | "library",
+    cameraType: ImagePicker.CameraType = ImagePicker.CameraType.back,
+  ) => {
+    try {
+      let result: ImagePicker.ImagePickerResult;
+      if (source === "camera") {
+        const permission = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert("Cần quyền camera", "Cho phép camera để chụp ảnh xác minh.");
+          return;
+        }
+        result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          cameraType,
+          allowsEditing: true,
+          aspect: cameraType === ImagePicker.CameraType.front ? [1, 1] : [4, 3],
+          quality: 0.65,
+          base64: true,
+        });
+      } else {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert("Cần quyền thư viện ảnh", "Cho phép truy cập ảnh để chọn giấy tờ xác minh.");
+          return;
+        }
+        result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          aspect: [4, 3],
+          quality: 0.65,
+          base64: true,
+          preferredAssetRepresentationMode:
+            ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+        });
+      }
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset?.base64) {
+        Alert.alert("Không đọc được ảnh", "Hãy chọn hoặc chụp lại ảnh.");
+        return;
+      }
+      if (asset.base64.length * 0.75 > 5 * 1024 * 1024) {
+        Alert.alert("Ảnh quá lớn", "Mỗi ảnh phải nhỏ hơn 5 MB. Hãy chọn hoặc chụp lại.");
+        return;
+      }
+      const mimeType = asset.mimeType || "image/jpeg";
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        Alert.alert("Định dạng không hỗ trợ", "Ảnh cần ở định dạng JPG, PNG hoặc WebP.");
+        return;
+      }
+      setImage({
+        dataUri: `data:${mimeType};base64,${asset.base64}`,
+        previewUri: asset.uri,
+      });
+    } catch {
+      Alert.alert(
+        source === "camera" ? "Không mở được camera" : "Không mở được thư viện ảnh",
+        "Hãy thử lại sau.",
+      );
     }
   };
 
@@ -102,6 +219,33 @@ export default function IdentityVerificationScreen({
               <Text style={styles.note}>{request.reviewer_note}</Text>
             ) : null}
           </View>
+          {submitFeedback ? (
+            <View
+              accessibilityRole="alert"
+              style={[
+                styles.submitFeedback,
+                submitFeedback.kind === "success"
+                  ? styles.submitSuccess
+                  : styles.submitError,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.submitFeedbackTitle,
+                  submitFeedback.kind === "success"
+                    ? styles.submitSuccessText
+                    : styles.submitErrorText,
+                ]}
+              >
+                {submitFeedback.kind === "success"
+                  ? "GỬI HỒ SƠ THÀNH CÔNG"
+                  : "CHƯA GỬI ĐƯỢC HỒ SƠ"}
+              </Text>
+              <Text style={styles.submitFeedbackMessage}>
+                {submitFeedback.message}
+              </Text>
+            </View>
+          ) : null}
           {request?.status !== "PENDING" && request?.status !== "APPROVED" && (
             <>
               <Text style={styles.section}>LOẠI TÀI KHOẢN</Text>
@@ -131,20 +275,81 @@ export default function IdentityVerificationScreen({
                 ))}
               </View>
               <Text style={styles.section}>GIẤY TỜ XÁC MINH</Text>
-              <TextInput
-                value={frontUrl}
-                onChangeText={setFrontUrl}
-                autoCapitalize="none"
-                placeholder="Liên kết ảnh mặt trước (bắt buộc)"
-                style={styles.input}
-              />
-              <TextInput
-                value={backUrl}
-                onChangeText={setBackUrl}
-                autoCapitalize="none"
-                placeholder="Liên kết ảnh mặt sau (nếu có)"
-                style={styles.input}
-              />
+              <Text style={styles.note}>Mặt trước bắt buộc; mặt sau không bắt buộc.</Text>
+              <Text style={styles.imageLabel}>Mặt trước (bắt buộc)</Text>
+              {frontImage ? (
+                <Image source={{ uri: frontImage.previewUri }} style={styles.documentPreview} />
+              ) : null}
+              <View style={styles.imageActions}>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setFrontImage, "camera")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>Chụp ảnh</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setFrontImage, "library")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>Chọn từ album</Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.imageLabel}>Mặt sau (không bắt buộc)</Text>
+              {backImage ? (
+                <Image source={{ uri: backImage.previewUri }} style={styles.documentPreview} />
+              ) : null}
+              <View style={styles.imageActions}>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setBackImage, "camera")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>Chụp ảnh</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setBackImage, "library")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>Chọn từ album</Text>
+                </TouchableOpacity>
+                {backImage ? (
+                  <TouchableOpacity
+                    disabled={submitting}
+                    onPress={() => setBackImage(null)}
+                    style={styles.removeButton}
+                  >
+                    <Text style={styles.removeButtonText}>Bỏ ảnh</Text>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <Text style={styles.section}>ẢNH CHÂN DUNG XÁC MINH</Text>
+              <Text style={styles.note}>
+                Chụp trực tiếp bằng camera trước, chỉ một người, nhìn thẳng vào camera và đủ sáng.
+              </Text>
+              {selfieImage ? (
+                <Image source={{ uri: selfieImage.previewUri }} style={styles.selfiePreview} />
+              ) : null}
+              <View style={styles.imageActions}>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setSelfieImage, "camera", ImagePicker.CameraType.front)}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>
+                    {selfieImage ? "Chụp lại" : "Chụp chân dung"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  disabled={submitting}
+                  onPress={() => void pickKycImage(setSelfieImage, "library")}
+                  style={styles.secondaryButton}
+                >
+                  <Text style={styles.secondaryButtonText}>Chọn từ album</Text>
+                </TouchableOpacity>
+              </View>
               <TouchableOpacity
                 disabled={submitting}
                 onPress={submit}
@@ -159,8 +364,7 @@ export default function IdentityVerificationScreen({
             </>
           )}
           <Text style={styles.note}>
-            Hình ảnh cần được lưu trên dịch vụ lưu trữ riêng tư đã cấu hình cho
-            dự án. Không dùng liên kết công khai chứa giấy tờ cá nhân.
+            Ảnh giấy tờ và chân dung được lưu riêng tư trên máy chủ; chỉ quản trị viên đã đăng nhập mới xem được.
           </Text>
         </ScrollView>
       )}
@@ -193,6 +397,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "700",
   },
+  submitFeedback: { marginTop: 12, padding: 14, borderRadius: 8 },
+  submitSuccess: { backgroundColor: "#E6F5F1" },
+  submitError: { backgroundColor: "#FEF2F2" },
+  submitFeedbackTitle: { fontSize: 11, fontWeight: "800" },
+  submitSuccessText: { color: "#00685f" },
+  submitErrorText: { color: "#B91C1C" },
+  submitFeedbackMessage: { marginTop: 5, color: "#334155", fontSize: 13, lineHeight: 19 },
   section: {
     marginTop: 22,
     marginBottom: 8,
@@ -215,14 +426,41 @@ const styles = StyleSheet.create({
   typeSelected: { borderColor: "#00685f", backgroundColor: "#E6F5F1" },
   typeText: { color: "#475569", fontSize: 12, fontWeight: "600" },
   typeTextSelected: { color: "#00685f" },
-  input: {
+  imageLabel: { marginTop: 14, color: "#334155", fontSize: 13, fontWeight: "600" },
+  documentPreview: {
+    width: "100%",
+    height: 180,
     marginTop: 8,
-    padding: 13,
-    backgroundColor: "white",
-    borderWidth: 1,
-    borderColor: "#CBD5E1",
     borderRadius: 8,
+    backgroundColor: "#E2E8F0",
   },
+  imageActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  selfiePreview: {
+    width: 180,
+    height: 180,
+    alignSelf: "center",
+    marginTop: 12,
+    borderRadius: 90,
+    backgroundColor: "#E2E8F0",
+  },
+  removeButton: {
+    minHeight: 44,
+    paddingHorizontal: 12,
+    backgroundColor: "#FEF2F2",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removeButtonText: { color: "#B91C1C", fontWeight: "600" },
+  secondaryButton: {
+    minHeight: 44,
+    marginTop: 12,
+    backgroundColor: "#E6F5F1",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  secondaryButtonText: { color: "#00685f", fontWeight: "700" },
   button: {
     minHeight: 48,
     marginTop: 16,

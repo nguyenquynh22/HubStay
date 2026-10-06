@@ -57,9 +57,12 @@ export default function AdministrativeAreaPicker({ value, onChange }: Props) {
             ? await getAdministrativeDistricts(value.province!.code)
             : await getAdministrativeWards(value.district!.code);
       setOptions(items);
-    } catch {
+    } catch (requestError: any) {
       setOptions([]);
-      setError("Không tải được danh sách. Kiểm tra kết nối rồi thử lại.");
+      setError(
+        requestError?.response?.data?.message ||
+          "Không tải được danh sách. Kiểm tra kết nối rồi thử lại.",
+      );
     } finally {
       setLoading(false);
     }

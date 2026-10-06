@@ -11,7 +11,7 @@ export const registerAccount = async (payload: {
   phone?: string;
   password: string;
   role: "STUDENT" | "WORKER" | "LANDLORD";
-}) => (await api.post("/auth/register", payload)).data;
+}) => (await api.post("/users", payload)).data;
 
 export const loginAccount = async (payload: {
   email: string;
@@ -74,7 +74,7 @@ export const searchPosts = async (filters: {
   district_code?: number;
   ward_code?: number;
   landmark_id?: number;
-  radius_km?: number;
+  radius_km?: number | "all";
 }) => (await api.get("/posts/search", { params: filters })).data;
 export const getSavedPosts = async (userId: number) =>
   (await api.get(`/saved_posts/user/${userId}`)).data;
@@ -103,7 +103,7 @@ export const resolveImageUrl = (url?: string) => {
   return `${origin}${url.startsWith("/") ? url : `/${url}`}`;
 };
 export const submitVerification = async (payload: Record<string, unknown>) =>
-  (await api.post("/verification_requests", payload)).data;
+  (await api.post("/verification_requests", payload, { timeout: 120000 })).data;
 export const devVerifyUser = async (userId: number, code: string) =>
   (await api.post(`/verification_requests/dev-verify/${userId}`, { code }))
     .data;

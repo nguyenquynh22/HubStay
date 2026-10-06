@@ -50,6 +50,13 @@ const normalizeSearch = (value: string) =>
     .replace(/\u0111/g, "d")
     .toLocaleLowerCase("vi");
 
+const normalizeModerationText = (value: string) =>
+  value
+    .normalize("NFC")
+    .toLocaleLowerCase("vi")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
 const normalizeAreaName = (value: string) =>
   normalizeSearch(value).replace(
     /^(thanh pho trung uong|thanh pho|thi xa|thi tran|dac khu|quan|huyen|tinh|xa|phuong)\s+/,
@@ -69,6 +76,10 @@ const parseCoordinates = (value: string) => {
     return null;
   return { latitude, longitude };
 };
+
+type PostSubmitStatus =
+  | { kind: "success"; message: string; details: string[] }
+  | { kind: "error"; message: string };
 
 export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   const NativeMapView: any =
@@ -96,8 +107,12 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
     });
   const [landmarks, setLandmarks] = useState<any[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [postSubmitStatus, setPostSubmitStatus] =
+    useState<PostSubmitStatus | null>(null);
   const [selectedLandmark, setSelectedLandmark] = useState<any>(null);
   const [landmarkSearch, setLandmarkSearch] = useState("");
+  const [landmarkFormError, setLandmarkFormError] = useState("");
+  const [submitValidationError, setSubmitValidationError] = useState("");
   const [addingLandmark, setAddingLandmark] = useState(false);
   const [newLandmarkName, setNewLandmarkName] = useState("");
   const [newLandmarkCategory, setNewLandmarkCategory] = useState("OTHER");
@@ -129,6 +144,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   };
 
   const updatePostCoordinates = (value: string) => {
+    setSubmitValidationError("");
     setCoordinateInput(value);
     const parsed = parseCoordinates(value);
     setCoords(parsed ? { lat: parsed.latitude, lng: parsed.longitude } : null);
@@ -138,6 +154,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
     setMapPinInput(value);
     setMapPin(parseCoordinates(value));
     setLandmarkLocationConfirmed(false);
+    setLandmarkFormError("");
   };
 
   const lookupAddress = async (
@@ -231,6 +248,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
     if (mapPickerPurpose === "post") {
       setCoords({ lat: mapPin.latitude, lng: mapPin.longitude });
       setCoordinateInput(formatCoordinates(mapPin.latitude, mapPin.longitude));
+      setSubmitValidationError("");
     }
     try {
       const geocodes = await Location.reverseGeocodeAsync(mapPin);
@@ -293,6 +311,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
       return;
     }
     setImages((current) => [...current, ...selected].slice(0, 6));
+    setSubmitValidationError("");
   };
 
   const pickImagesFromAlbum = async () => {
@@ -369,6 +388,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
         lat: location.coords.latitude,
         lng: location.coords.longitude,
       });
+      setSubmitValidationError("");
       setCoordinateInput(
         formatCoordinates(location.coords.latitude, location.coords.longitude),
       );
@@ -470,20 +490,27 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
         `${item.name} ${item.address} ${item.category}`,
       );
       const matchCount = landmarkTokens.filter((token) =>
-        searchableText.includes(token),
+        searchableText
+          .split(/[^a-z0-9]+/)
+          .some((word: string) => word.startsWith(token) || word.includes(token)),
       ).length;
+      const exactMatch = searchableText.includes(landmarkTokens.join(" "));
       return {
         item,
         score: landmarkTokens.length ? matchCount / landmarkTokens.length : 0,
+        exactMatch,
       };
     })
     .filter(({ score }) => landmarkTokens.length > 0 && score >= 0.5)
-    .sort((a, b) => b.score - a.score)
+    .sort(
+      (a, b) =>
+        Number(b.exactMatch) - Number(a.exactMatch) || b.score - a.score,
+    )
     .map(({ item }) => item);
 
   const createPinnedLandmark = async () => {
     if (!newLandmarkName.trim()) {
-      Alert.alert("Thiếu tên địa điểm", "Nhập tên địa điểm mới trước khi lưu.");
+      setLandmarkFormError("Nhập tên địa điểm trước khi lưu.");
       return;
     }
     if (
@@ -495,19 +522,18 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
       mapPin.longitude < 102 ||
       mapPin.longitude > 110
     ) {
-      Alert.alert(
-        "Chưa ghim vị trí",
-        "Chạm vào bản đồ để chọn tọa độ địa điểm.",
+      setLandmarkFormError(
+        "Chưa có tọa độ hợp lệ. Tìm địa chỉ trên bản đồ hoặc ghim vị trí.",
       );
       return;
     }
     if (!landmarkLocationConfirmed) {
-      Alert.alert(
-        "Chưa xác nhận vị trí",
-        "Xem vị trí trên bản đồ, chỉnh ghim nếu cần rồi xác nhận trước khi lưu.",
+      setLandmarkFormError(
+        "Hãy kiểm tra bản đồ rồi bấm “Xác nhận vị trí này” trước khi lưu.",
       );
       return;
     }
+    setLandmarkFormError("");
     setSubmitting(true);
     try {
       const response = await createLandmark({
@@ -534,9 +560,19 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
         "Landmark mới đã được lưu và chọn cho bài đăng.",
       );
     } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Kiểm tra kết nối API rồi thử lại.";
+      console.error("[CreatePost] Thêm địa điểm thất bại", {
+        httpStatus: error?.response?.status ?? null,
+        message,
+        response: error?.response?.data ?? null,
+      });
+      setLandmarkFormError(message);
       Alert.alert(
         "Không thêm được địa điểm",
-        error?.response?.data?.message || "Kiểm tra kết nối API rồi thử lại.",
+        message,
       );
     } finally {
       setSubmitting(false);
@@ -544,81 +580,140 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !price.trim()) {
-      Alert.alert("Thiếu thông tin", "Nhập tiêu đề và giá thuê.");
+    console.info("[CreatePost] Nhấn nút đăng bài", {
+      userId,
+      submitting,
+      timestamp: new Date().toISOString(),
+    });
+    if (submitting) {
+      console.warn("[CreatePost] Bỏ qua lần nhấn vì bài đăng đang được gửi.");
       return;
     }
-    const content = normalizeSearch(`${title} ${description}`)
-      .replace(/[^a-z0-9]+/g, " ")
-      .trim()
-      .split(/\s+/);
-    if (
-      blockedWords.some((word) =>
-        content.includes(
-          normalizeSearch(word)
-            .replace(/[^a-z0-9]+/g, " ")
-            .trim(),
-        ),
-      )
-    ) {
+    setPostSubmitStatus(null);
+    const numericPrice = Number(price.replace(/[^0-9]/g, ""));
+    const postCoordinates = coords;
+    const { province, district, ward } = administrativeArea;
+    const missingFields = [
+      !title.trim() ? "Tiêu đề" : "",
+      !description.trim() ? "Mô tả chi tiết" : "",
+      !price.trim() || !Number.isFinite(numericPrice) || numericPrice <= 0
+        ? "Giá thuê lớn hơn 0"
+        : "",
+      images.length < 2 ? "Ít nhất 2 ảnh" : "",
+    ].filter(Boolean);
+    if (missingFields.length) {
+      const message = `Cần bổ sung: ${missingFields.join("; ")}.`;
+      console.warn("[CreatePost] Không gửi request, thiếu thông tin.", {
+        missingFields,
+      });
+      setPostSubmitStatus({ kind: "error", message });
+      setSubmitValidationError(message);
+      Alert.alert("Chưa thể đăng bài", message);
+      return;
+    }
+    if (!postCoordinates || !province || !district || !ward) {
+      const missingLocationFields = [
+        !postCoordinates ? "Vị trí phòng (GPS hoặc ghim bản đồ)" : "",
+        !province || !district || !ward
+          ? "Tỉnh/thành phố, quận/huyện và phường/xã"
+          : "",
+      ].filter(Boolean);
+      const message = `Cần bổ sung: ${missingLocationFields.join("; ")}.`;
+      console.warn("[CreatePost] Không gửi request, thiếu vị trí.", {
+        missingFields: missingLocationFields,
+      });
+      setPostSubmitStatus({ kind: "error", message });
+      setSubmitValidationError(message);
+      Alert.alert("Chưa thể đăng bài", message);
+      return;
+    }
+    setSubmitValidationError("");
+    const content = new Set(
+      normalizeModerationText(`${title} ${description}`).split(/\s+/),
+    );
+    const matchedBlockedWord = blockedWords.find((word) =>
+      content.has(normalizeModerationText(word)),
+    );
+    if (matchedBlockedWord) {
+      const message = `Nội dung chứa từ không phù hợp: "${matchedBlockedWord}".`;
+      console.warn("[CreatePost] Không gửi request vì nội dung có từ không phù hợp.", {
+        matchedWord: matchedBlockedWord,
+      });
+      setPostSubmitStatus({ kind: "error", message });
       Alert.alert(
         "Nội dung chưa phù hợp",
-        "Hãy chỉnh sửa tiêu đề hoặc mô tả trước khi đăng.",
-      );
-      return;
-    }
-    if (images.length < 2) {
-      Alert.alert(
-        "Thiếu ảnh phòng",
-        "Vui lòng thêm ít nhất 2 ảnh từ album hoặc camera.",
-      );
-      return;
-    }
-    if (!coords) {
-      Alert.alert(
-        "Thiếu vị trí",
-        "Lấy vị trí GPS hoặc ghim vị trí phòng trên bản đồ.",
-      );
-      return;
-    }
-    if (
-      !administrativeArea.province ||
-      !administrativeArea.district ||
-      !administrativeArea.ward
-    ) {
-      Alert.alert(
-        "Chưa chọn địa chỉ khu vực",
-        "Chọn tỉnh/thành phố, quận/huyện và phường/xã để người thuê tìm thấy bài đăng.",
+        `Từ bị phát hiện: "${matchedBlockedWord}". Hãy chỉnh sửa tiêu đề hoặc mô tả rồi thử lại.`,
       );
       return;
     }
     setSubmitting(true);
     try {
-      await createPost({
+      const payload = {
         user_id: userId,
         title: title.trim(),
         description: description.trim(),
-        price: Number(price.replace(/[^0-9]/g, "")),
+        price: numericPrice,
         address:
           addressText.trim() ||
-          `Vị trí ghim (${coords.lat.toFixed(5)}, ${coords.lng.toFixed(5)})`,
-        province_code: administrativeArea.province.code,
-        district_code: administrativeArea.district.code,
-        ward_code: administrativeArea.ward.code,
-        latitude: coords.lat,
-        longitude: coords.lng,
+          `Vị trí ghim (${postCoordinates.lat.toFixed(5)}, ${postCoordinates.lng.toFixed(5)})`,
+        province_code: province.code,
+        district_code: district.code,
+        ward_code: ward.code,
+        latitude: postCoordinates.lat,
+        longitude: postCoordinates.lng,
         landmark_id: selectedLandmark?.landmark_id || null,
         post_type: postType,
         enable_booking: enableBooking ? 1 : 0,
         images,
+      };
+      console.info("[CreatePost] Gửi POST /api/posts", {
+        ...payload,
+        description: `[${payload.description.length} ký tự]`,
+        images: `${images.length} ảnh (nội dung ảnh được ẩn trong log)`,
       });
-      Alert.alert("Đăng bài thành công", "Bài đăng đã được lưu vào CSDL.", [
+      const response = await createPost(payload);
+      if (!response?.success || !response?.data) {
+        throw new Error(
+          response?.message || "Máy chủ không xác nhận đã tạo bài đăng.",
+        );
+      }
+      const createdPost = response.data;
+      const details = [
+        `Mã bài đăng: ${createdPost.post_id ?? "không có trong phản hồi"}`,
+        `Tiêu đề: ${payload.title}`,
+        `Giá thuê: ${numericPrice.toLocaleString("vi-VN")} đ/tháng`,
+        `Địa chỉ: ${payload.address}`,
+        `Mã khu vực (tỉnh/quận/phường): ${province.code}/${district.code}/${ward.code}`,
+        `Tọa độ: ${postCoordinates.lat}, ${postCoordinates.lng}`,
+        `Loại tin: ${postType}`,
+        `Số ảnh: ${images.length}`,
+      ];
+      const message = "Bài đăng đã được máy chủ xác nhận.";
+      console.info("[CreatePost] Đăng bài thành công", {
+        success: response.success,
+        postId: createdPost.post_id,
+        returnedFields: Object.keys(createdPost),
+        details,
+      });
+      setPostSubmitStatus({ kind: "success", message, details });
+      Alert.alert("Đăng bài thành công", details.join("\n"), [
         { text: "OK", onPress: onCreated },
       ]);
     } catch (error: any) {
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Kiểm tra kết nối API và thử lại.";
+      console.error("[CreatePost] Đăng bài thất bại", {
+        httpStatus: error?.response?.status ?? null,
+        message,
+        response: error?.response?.data ?? null,
+      });
+      setPostSubmitStatus({ kind: "error", message });
+      setSubmitValidationError(message);
       Alert.alert(
         "Không đăng được bài",
-        error?.response?.data?.message || "Kiểm tra kết nối API và thử lại.",
+        message,
       );
     } finally {
       setSubmitting(false);
@@ -862,7 +957,10 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                 {idx === 0 && <Text style={styles.coverTag}>Ảnh bìa</Text>}
                 <TouchableOpacity
                   style={styles.removeImgBtn}
-                  onPress={() => setImages(images.filter((_, i) => i !== idx))}
+                  onPress={() => {
+                    setImages(images.filter((_, i) => i !== idx));
+                    setSubmitValidationError("");
+                  }}
                 >
                   <MaterialIcons name="close" size={14} color="#ffffff" />
                 </TouchableOpacity>
@@ -900,7 +998,10 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
           <TextInput
             style={styles.input}
             value={title}
-            onChangeText={setTitle}
+            onChangeText={(value) => {
+              setTitle(value);
+              setSubmitValidationError("");
+            }}
             placeholder="Ví dụ: Phòng sáng, gần trường ĐH SPKT"
             placeholderTextColor="#9AAAB0"
           />
@@ -911,7 +1012,10 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
           <TextInput
             style={[styles.input, styles.textArea]}
             value={description}
-            onChangeText={setDescription}
+            onChangeText={(value) => {
+              setDescription(value);
+              setSubmitValidationError("");
+            }}
             multiline
             numberOfLines={5}
             placeholder="Viết đầy đủ thông tin: Diện tích, điện nước, nội thất, tiện ích xung quanh, giờ giấc..."
@@ -929,7 +1033,10 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
             <TextInput
               style={styles.priceInput}
               value={price}
-              onChangeText={setPrice}
+              onChangeText={(value) => {
+                setPrice(value);
+                setSubmitValidationError("");
+              }}
               keyboardType="numeric"
               placeholder="2.800.000"
             />
@@ -955,8 +1062,38 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
           </Text>
           <AdministrativeAreaPicker
             value={administrativeArea}
-            onChange={setAdministrativeArea}
+            onChange={(value) => {
+              setAdministrativeArea(value);
+              setSubmitValidationError("");
+            }}
           />
+
+          <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
+            Địa chỉ chi tiết
+          </Text>
+          <Text style={styles.locationNote}>
+            Không bắt buộc. Có thể nhập số nhà, tên đường, thôn/xóm để người thuê dễ tìm.
+          </Text>
+          <TextInput
+            style={styles.input}
+            value={addressText}
+            onChangeText={setAddressText}
+            placeholder="Ví dụ: Số 12, ngõ 25 đường Lê Lợi"
+            placeholderTextColor="#9AAAB0"
+            returnKeyType="done"
+          />
+          <TouchableOpacity
+            style={styles.mapLocationBtn}
+            onPress={lookupRoomAddress}
+            disabled={addressLookupLoading || !addressText.trim()}
+          >
+            {addressLookupLoading ? (
+              <ActivityIndicator color="#00685f" />
+            ) : (
+              <MaterialIcons name="search" size={20} color="#00685f" />
+            )}
+            <Text style={styles.gpsBtnText}>Tìm địa chỉ này trên bản đồ</Text>
+          </TouchableOpacity>
 
           <Text style={[styles.sectionLabel, { marginTop: 16 }]}>
             Vị trí chính xác của phòng <Text style={styles.required}>*</Text>
@@ -1028,60 +1165,82 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
         </View>
 
         <View style={styles.cardSection}>
-          <Text style={styles.sectionLabel}>Chọn địa điểm dễ tìm gần nhất</Text>
-          <TextInput
-            style={styles.input}
-            value={landmarkSearch}
-            onChangeText={(value) => {
-              setLandmarkSearch(value);
-              if (selectedLandmark) setSelectedLandmark(null);
-            }}
-            onSubmitEditing={() => {
-              if (!matchingLandmarks[0]) return;
-              setSelectedLandmark(matchingLandmarks[0]);
-              setLandmarkSearch("");
-            }}
-            placeholder="Tìm trường học, khu công nghiệp, địa điểm..."
-          />
+          <Text style={styles.sectionLabel}>Địa điểm dễ tìm gần nhất</Text>
+          <Text style={styles.helperText}>
+            Nhập tên để chọn gợi ý. Thông tin này không bắt buộc.
+          </Text>
+          <View style={styles.landmarkSearch}>
+            <MaterialIcons name="search" size={20} color="#64748B" />
+            <TextInput
+              style={styles.landmarkSearchInput}
+              value={landmarkSearch}
+              onChangeText={(value) => {
+                setLandmarkSearch(value);
+                if (selectedLandmark) setSelectedLandmark(null);
+              }}
+              onSubmitEditing={() => {
+                if (!matchingLandmarks[0]) return;
+                setSelectedLandmark(matchingLandmarks[0]);
+                setLandmarkSearch("");
+              }}
+              returnKeyType="search"
+              placeholder="Ví dụ: Bách Khoa, Hồ Tây, Phố Nối..."
+            />
+            {!!landmarkSearch && (
+              <TouchableOpacity
+                accessibilityLabel="Xóa tìm kiếm địa điểm"
+                onPress={() => setLandmarkSearch("")}
+              >
+                <MaterialIcons name="close" size={18} color="#64748B" />
+              </TouchableOpacity>
+            )}
+          </View>
           {selectedLandmark && (
             <TouchableOpacity
               style={styles.selectedLandmark}
               onPress={() => setSelectedLandmark(null)}
             >
-              <MaterialIcons name="place" size={17} color="#00685f" />
-              <Text style={styles.selectedLandmarkText}>
-                {selectedLandmark.name}
-                {selectedLandmark.address
-                  ? ` · ${selectedLandmark.address}`
-                  : ""}
-              </Text>
+              <MaterialIcons name="place" size={18} color="#00685f" />
+              <View style={styles.landmarkSuggestionText}>
+                <Text style={styles.selectedLandmarkText}>
+                  {selectedLandmark.name}
+                </Text>
+                {!!selectedLandmark.address && (
+                  <Text style={styles.landmarkOptionAddress}>
+                    {selectedLandmark.address}
+                  </Text>
+                )}
+              </View>
               <MaterialIcons name="close" size={16} color="#64748B" />
             </TouchableOpacity>
           )}
           {landmarkSearch.trim().length >= 2 && (
-            <View style={styles.landmarkOptions}>
+            <ScrollView
+              style={styles.landmarkOptions}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
+            >
               {matchingLandmarks.slice(0, 6).map((item) => (
                 <TouchableOpacity
                   key={item.landmark_id}
-                  style={[
-                    styles.landmarkOption,
-                    selectedLandmark?.landmark_id === item.landmark_id &&
-                      styles.landmarkOptionActive,
-                  ]}
+                  style={styles.landmarkOption}
                   onPress={() => {
                     setSelectedLandmark(item);
                     setLandmarkSearch("");
                   }}
                 >
-                  <Text style={styles.landmarkOptionName}>{item.name}</Text>
-                  {!!item.address && (
-                    <Text style={styles.landmarkOptionAddress}>
-                      {item.address}
-                    </Text>
-                  )}
+                  <MaterialIcons name="place" size={18} color="#00685f" />
+                  <View style={styles.landmarkSuggestionText}>
+                    <Text style={styles.landmarkOptionName}>{item.name}</Text>
+                    {!!item.address && (
+                      <Text style={styles.landmarkOptionAddress}>
+                        {item.address}
+                      </Text>
+                    )}
+                  </View>
                 </TouchableOpacity>
               ))}
-            </View>
+            </ScrollView>
           )}
           {landmarkSearch.trim().length >= 2 &&
             matchingLandmarks.length === 0 && (
@@ -1094,6 +1253,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
             style={styles.addLandmarkButton}
             onPress={() => {
               setAddingLandmark(true);
+              setLandmarkFormError("");
               setMapPickerPurpose("landmark");
               setMapPinInput("");
               setMapPin(null);
@@ -1108,10 +1268,17 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
           </TouchableOpacity>
           {addingLandmark && (
             <View style={styles.newLandmarkForm}>
+              <Text style={styles.helperText}>
+                1. Nhập tên địa điểm. 2. Tìm địa chỉ hoặc ghim bản đồ. 3. Xác
+                nhận vị trí rồi lưu.
+              </Text>
               <TextInput
                 style={styles.input}
                 value={newLandmarkName}
-                onChangeText={setNewLandmarkName}
+                onChangeText={(value) => {
+                  setNewLandmarkName(value);
+                  setLandmarkFormError("");
+                }}
                 placeholder="Tên địa điểm, ví dụ: Khu công nghiệp..."
               />
 
@@ -1123,8 +1290,9 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                   setMapPin(null);
                   setMapPinInput("");
                   setLandmarkLocationConfirmed(false);
+                  setLandmarkFormError("");
                 }}
-                placeholder="Enter address to find on map"
+                placeholder="Nhập địa chỉ để tìm trên bản đồ"
               />
               <TouchableOpacity
                 style={styles.mapLocationBtn}
@@ -1154,7 +1322,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                         value={mapPinInput}
                         onChangeText={updateMapPinInput}
                         keyboardType="numbers-and-punctuation"
-                        placeholder="Latitude, longitude"
+                        placeholder="Vĩ độ, kinh độ"
                       />
                     </View>
                   ) : (
@@ -1173,6 +1341,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                           formatCoordinates(point.latitude, point.longitude),
                         );
                         setLandmarkLocationConfirmed(false);
+                        setLandmarkFormError("");
                       }}
                     >
                       <NativeMapMarker coordinate={mapPin} pinColor="#00685f" />
@@ -1184,7 +1353,10 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                       !landmarkLocationConfirmed &&
                         styles.confirmLocationButton,
                     ]}
-                    onPress={() => setLandmarkLocationConfirmed(true)}
+                    onPress={() => {
+                      setLandmarkLocationConfirmed(true);
+                      setLandmarkFormError("");
+                    }}
                   >
                     <Text style={styles.saveLandmarkText}>
                       {landmarkLocationConfirmed
@@ -1199,10 +1371,13 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                   ? `Đã ghim: ${mapPin.latitude.toFixed(5)}, ${mapPin.longitude.toFixed(5)}`
                   : "Chưa ghim tọa độ."}
               </Text>
+              {!!landmarkFormError && (
+                <Text style={styles.validationError}>{landmarkFormError}</Text>
+              )}
               <TouchableOpacity
                 style={styles.saveLandmarkButton}
                 onPress={createPinnedLandmark}
-                disabled={submitting || !landmarkLocationConfirmed}
+                disabled={submitting}
               >
                 <Text style={styles.saveLandmarkText}>
                   {submitting ? "Đang lưu..." : "Lưu và chọn địa điểm mới"}
@@ -1212,18 +1387,61 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
           )}
         </View>
 
-        <View style={{ height: 100 }} />
+        <View style={{ height: 140 }} />
       </ScrollView>
 
       {/* FIXED BOTTOM ACTION BAR */}
       <View style={styles.bottomDock}>
+        {postSubmitStatus && (
+          <View
+            accessibilityRole="alert"
+            style={[
+              styles.postSubmitStatus,
+              postSubmitStatus.kind === "success"
+                ? styles.postSubmitSuccess
+                : styles.postSubmitFailure,
+            ]}
+          >
+            <Text
+              style={[
+                styles.postSubmitStatusTitle,
+                postSubmitStatus.kind === "success"
+                  ? styles.postSubmitSuccessText
+                  : styles.postSubmitFailureText,
+              ]}
+            >
+              {postSubmitStatus.kind === "success"
+                ? "ĐĂNG BÀI THÀNH CÔNG"
+                : "ĐĂNG BÀI CHƯA THÀNH CÔNG"}
+            </Text>
+            <Text style={styles.postSubmitStatusMessage}>
+              {postSubmitStatus.kind === "success"
+                ? postSubmitStatus.details[0]
+                : postSubmitStatus.message}
+            </Text>
+          </View>
+        )}
+        {!!submitValidationError && (
+          <Text accessibilityRole="alert" style={styles.validationError}>
+            {submitValidationError}
+          </Text>
+        )}
         <TouchableOpacity
           style={styles.submitBtn}
           onPress={handleSubmit}
           disabled={submitting}
         >
-          <Text style={styles.submitBtnText}>Tiếp tục & Đăng bài ngay</Text>
-          <MaterialIcons name="check-circle" size={20} color="#ffffff" />
+          {submitting ? (
+            <>
+              <ActivityIndicator color="#ffffff" />
+              <Text style={styles.submitBtnText}>Đang gửi bài đăng...</Text>
+            </>
+          ) : (
+            <>
+              <Text style={styles.submitBtnText}>Tiếp tục & Đăng bài ngay</Text>
+              <MaterialIcons name="check-circle" size={20} color="#ffffff" />
+            </>
+          )}
         </TouchableOpacity>
       </View>
       <Modal
@@ -1255,7 +1473,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
               <TextInput
                 style={styles.input}
                 keyboardType="numbers-and-punctuation"
-                placeholder="Latitude, longitude"
+                placeholder="Vĩ độ, kinh độ"
                 value={mapPinInput}
                 onChangeText={updateMapPinInput}
               />
@@ -1686,7 +1904,32 @@ const styles = StyleSheet.create({
     color: "#131b2e",
   },
 
-  landmarkOptions: { marginTop: 8, gap: 6 },
+  landmarkSearch: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 8,
+    paddingHorizontal: 10,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 10,
+  },
+  landmarkSearchInput: {
+    flex: 1,
+    height: 44,
+    fontSize: 14,
+    color: "#1F2937",
+  },
+  landmarkOptions: {
+    maxHeight: 240,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    backgroundColor: "#ffffff",
+    overflow: "hidden",
+  },
+  landmarkSuggestionText: { flex: 1, marginLeft: 8 },
   selectedLandmark: {
     flexDirection: "row",
     alignItems: "center",
@@ -1703,13 +1946,14 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   landmarkOption: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: "#E5E7EB",
     backgroundColor: "#ffffff",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 10,
   },
-  landmarkOptionActive: { borderColor: "#00685f", backgroundColor: "#EAF5F1" },
   landmarkOptionName: { color: "#1F2937", fontSize: 13, fontWeight: "600" },
   landmarkOptionAddress: { color: "#64748B", fontSize: 11, marginTop: 2 },
   addLandmarkButton: {
@@ -1725,6 +1969,28 @@ const styles = StyleSheet.create({
   },
   addLandmarkText: { color: "#00685f", fontWeight: "700", fontSize: 12 },
   newLandmarkForm: { marginTop: 10, gap: 8 },
+  postSubmitStatus: {
+    marginBottom: 8,
+    padding: 9,
+    borderRadius: 8,
+  },
+  postSubmitSuccess: { backgroundColor: "#E6F5F1" },
+  postSubmitFailure: { backgroundColor: "#FEF2F2" },
+  postSubmitStatusTitle: { fontSize: 11, fontWeight: "800" },
+  postSubmitSuccessText: { color: "#00685f" },
+  postSubmitFailureText: { color: "#A23B33" },
+  postSubmitStatusMessage: {
+    marginTop: 3,
+    color: "#475569",
+    fontSize: 12,
+    lineHeight: 17,
+  },
+  validationError: {
+    color: "#A23B33",
+    fontSize: 12,
+    lineHeight: 17,
+    marginBottom: 8,
+  },
   categoryOptions: {
     flexDirection: "row",
     flexWrap: "wrap",
