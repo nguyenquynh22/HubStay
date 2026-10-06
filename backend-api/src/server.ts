@@ -7,12 +7,18 @@ import mysql, { type PoolConnection, type ResultSetHeader, type RowDataPacket } 
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? 5000);
 const jwtSecret = process.env.ADMIN_JWT_SECRET;
-const allowedOrigins = (process.env.ADMIN_WEB_ORIGIN ?? "http://localhost:3000")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const allowedOrigins = new Set(
+  [
+    process.env.ADMIN_WEB_ORIGIN ?? "http://localhost:3000",
+    process.env.EXPO_WEB_ORIGINS ??
+      "http://localhost:8081,http://127.0.0.1:8081",
+  ]
+    .flatMap((origins) => origins.split(","))
+    .map((origin) => origin.trim())
+    .filter(Boolean),
+);
 
 const pool = mysql.createPool({
   host: process.env.DB_HOST ?? "127.0.0.1",
@@ -25,7 +31,13 @@ const pool = mysql.createPool({
   dateStrings: true,
 });
 
-app.use(cors({ origin: allowedOrigins, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) =>
+      callback(null, !origin || allowedOrigins.has(origin)),
+    credentials: true,
+  }),
+);
 app.use(express.json({ limit: "1mb" }));
 
 type Period = "7d" | "30d" | "quarter" | "year";
@@ -159,6 +171,14 @@ app.get("/api/health", async (_req, res) => {
   } catch {
     res.status(503).json({ status: "database_unavailable" });
   }
+});
+
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    message: "HubStay API đang hoạt động.",
+    health: "/api/health",
+  });
 });
 
 app.get("/api/admin/session", requireAdmin, (_req, res) => {

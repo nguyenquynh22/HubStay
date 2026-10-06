@@ -48,7 +48,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
     district: null,
     ward: null,
   });
-  const [radiusKm, setRadiusKm] = useState(10);
+  const [radiusKm, setRadiusKm] = useState<number | null>(10);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
@@ -120,13 +120,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
         );
         const words = text.split(/[^a-z0-9]+/).filter(Boolean);
         const matched = tokens.filter((token) =>
-          words.some(
-            (word) =>
-              word === token ||
-              (tokens.length === 1 &&
-                token.length >= 3 &&
-                word.startsWith(token)),
-          ),
+          words.some((word) => word.startsWith(token) || word.includes(token)),
         ).length;
         return {
           item,
@@ -164,7 +158,10 @@ export default function HomeScreen({ onSelectPost }: Props) {
         ...(area.district ? { district_code: area.district.code } : {}),
         ...(area.ward ? { ward_code: area.ward.code } : {}),
         ...(landmark
-          ? { landmark_id: Number(landmark.landmark_id), radius_km: radiusKm }
+          ? {
+              landmark_id: Number(landmark.landmark_id),
+              radius_km: radiusKm ?? "all",
+            }
           : {}),
       });
       setPosts(response.data || []);
@@ -198,18 +195,18 @@ export default function HomeScreen({ onSelectPost }: Props) {
         <MaterialIcons name="location-searching" size={25} color="#00685f" />
       </View>
       <View style={styles.controls}>
-        <Text style={styles.label}>KHU VỰC</Text>
+        <Text style={styles.label}>KHU VỰC (KHÔNG BẮT BUỘC)</Text>
         <AdministrativeAreaPicker value={area} onChange={setArea} />
         <Text style={styles.helper}>
-          Chọn tối thiểu quận/huyện. Chọn thêm phường/xã để thu hẹp kết quả.
+          Có thể lọc theo quận/huyện, phường/xã hoặc chọn địa điểm để tìm theo khoảng cách.
         </Text>
         <Text style={[styles.label, styles.landmarkLabel]}>
-          ĐỊA ĐIỂM GẦN ĐÓ (KHÔNG BẮT BUỘC)
+          TÌM NHANH THEO ĐỊA ĐIỂM
         </Text>
         <Text style={styles.helper}>
           {areaTerms.length
-            ? `Gợi ý chỉ trong ${area.ward?.name || area.district?.name || area.province?.name}.`
-            : "Gõ tên địa điểm để xem gợi ý."}
+            ? `Gợi ý trong ${area.ward?.name || area.district?.name || area.province?.name}.`
+            : "Nhập tên trường, bệnh viện, khu công nghiệp hoặc địa điểm gần bạn."}
         </Text>
         <View style={styles.search}>
           <MaterialIcons name="search" size={20} color="#64748B" />
@@ -223,7 +220,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
               suggestions[0] && searchLandmark(suggestions[0])
             }
             returnKeyType="search"
-            placeholder="Tìm trường, bệnh viện, địa điểm..."
+            placeholder="Ví dụ: Bách Khoa, Hồ Tây, Phố Nối..."
             style={styles.input}
           />
         </View>
@@ -252,7 +249,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
           <Text style={styles.suggestionEmpty}>
             {areaTerms.length
               ? `Không có địa điểm phù hợp trong ${area.ward?.name || area.district?.name || area.province?.name}.`
-              : "Không tìm thấy địa điểm phù hợp."}
+              : "Không tìm thấy địa điểm phù hợp. Hãy thử từ khóa khác."}
           </Text>
         )}
         {!!landmark && (
@@ -272,9 +269,9 @@ export default function HomeScreen({ onSelectPost }: Props) {
         )}
         {!!landmark && (
           <View style={styles.radiusRow}>
-            {[5, 10, 20, 30].map((radius) => (
+            {[5, 10, 20, 30, null].map((radius) => (
               <TouchableOpacity
-                key={radius}
+                key={radius ?? "all"}
                 style={[
                   styles.radiusChip,
                   radiusKm === radius && styles.radiusChipActive,
@@ -287,7 +284,7 @@ export default function HomeScreen({ onSelectPost }: Props) {
                     radiusKm === radius && styles.radiusTextActive,
                   ]}
                 >
-                  {radius} km
+                  {radius == null ? "Mọi khoảng cách" : `${radius} km`}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -320,7 +317,9 @@ export default function HomeScreen({ onSelectPost }: Props) {
             <Text style={styles.empty}>
               {error ||
                 (landmark
-                  ? `Không có bài đăng trong bán kính ${radiusKm} km.`
+                  ? radiusKm == null
+                    ? `Không có bài đăng gần ${landmark.name}.`
+                    : `Không có bài đăng trong bán kính ${radiusKm} km.`
                   : area.ward
                     ? `Chưa có bài đăng tại ${area.ward.name}.`
                     : area.district
@@ -439,7 +438,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   selected: { flex: 1, fontSize: 12, color: "#00685f", fontWeight: "600" },
-  radiusRow: { flexDirection: "row", gap: 8, marginTop: 8 },
+  radiusRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
   radiusChip: {
     borderWidth: 1,
     borderColor: "#c9d4cf",

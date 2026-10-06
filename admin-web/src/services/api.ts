@@ -62,6 +62,9 @@ export interface AdminVerification {
   email: string;
   frontCardUrl: string | null;
   backCardUrl: string | null;
+  frontImageAvailable: boolean;
+  backImageAvailable: boolean;
+  selfieAvailable: boolean;
   status: "PENDING" | "APPROVED" | "REJECTED";
   rejectionReason: string | null;
   initials: string;
@@ -201,6 +204,26 @@ async function uploadAvatar(file: File): Promise<string> {
   return body.url;
 }
 
+async function verificationImage(
+  id: number,
+  kind: "front" | "back" | "selfie",
+): Promise<Blob> {
+  const token = typeof window === "undefined"
+    ? null
+    : window.localStorage.getItem("admin_token") ?? window.sessionStorage.getItem("admin_token");
+  const response = await fetch(apiBaseUrl + "/admin/verifications/" + id + "/images/" + kind, {
+    headers: {
+      ...(token ? { Authorization: "Bearer " + token } : {}),
+    },
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.message ?? "Không thể tải ảnh xác minh.", response.status);
+  }
+  return response.blob();
+}
+
 export const adminApi = {
   health: () => request<{ status: string }>("/health"),
   login: (identifier: string, password: string) =>
@@ -234,11 +257,12 @@ export const adminApi = {
     activation_token?: string;
     email_sent?: boolean;
     email_error?: string;
-  }>("/users", { method: "POST", body: JSON.stringify(payload) }),
+  }>("/users/admin", { method: "POST", body: JSON.stringify(payload) }),
   uploadAvatar,
   updateUser: (id: number, payload: UserPayload) => request<{ success: boolean; data: AdminUser }>("/users/admin/" + id, { method: "PUT", body: JSON.stringify(payload) }),
   deleteUser: (id: number) => request<{ success: boolean }>("/users/admin/" + id, { method: "DELETE" }),
   verifications: () => request<{ items: AdminVerification[] }>("/admin/verifications"),
+  verificationImage,
   reviewVerification: (id: number, status: "APPROVED" | "REJECTED", reason?: string) =>
     request("/admin/verifications/" + id, { method: "PATCH", body: JSON.stringify({ status, reason }) }),
   posts: () => request<{ items: AdminPost[] }>("/admin/posts"),

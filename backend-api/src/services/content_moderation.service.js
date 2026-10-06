@@ -12,12 +12,9 @@ const defaultBlockedWords = [
 
 const normalize = (value) =>
   value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "d")
+    .normalize("NFC")
     .toLocaleLowerCase("vi")
-    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
 
 const getBlockedWords = () => {

@@ -33,6 +33,14 @@ app.use("/uploads", express.static(path.resolve(__dirname, "../uploads"), {
   maxAge: "1y",
 }));
 
+app.get("/", (_req, res) => {
+  res.json({
+    success: true,
+    message: "HubStay API đang hoạt động.",
+    health: "/api/health",
+  });
+});
+
 app.get("/api/health", async (_req, res) => {
   try {
     await db.query("SELECT 1");
@@ -94,15 +102,48 @@ app.use((req, res) => {
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error("[API] Request failed", {
+    method: req.method,
+    path: req.originalUrl,
+    code: err.code,
+    type: err.type,
+    message: err.message,
+    stack: err.stack,
+  });
   const status = Number(err.statusCode ?? err.status);
   const statusCode = Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
-  const message = process.env.NODE_ENV === "production" ? "Internal Server Error" : err.message;
+  let message =
+    statusCode < 500 || process.env.NODE_ENV !== "production"
+      ? err.message
+      : "Lỗi máy chủ. Vui lòng thử lại sau.";
+
+  if (err.type === "entity.too.large") {
+    message = "Ảnh gửi lên quá lớn. Hãy chọn ảnh nhỏ hơn rồi thử lại.";
+  } else if (err instanceof SyntaxError && statusCode === 400) {
+    message = "Dữ liệu gửi lên không đúng định dạng. Hãy chọn lại ảnh và thử lại.";
+  } else if (
+    err.code === "ER_BAD_FIELD_ERROR" &&
+    /selfie_image_url/i.test(err.message)
+  ) {
+    message =
+      "Cơ sở dữ liệu chưa có cột selfie_image_url cho ảnh chân dung KYC. Quản trị viên cần chạy migration 20261006_add_selfie_image_url.sql.";
+  } else if (
+    err.code === "ER_BAD_FIELD_ERROR" &&
+    /\bkyc_status\b|\bverified_at\b/i.test(err.message)
+  ) {
+    message =
+      "Cơ sở dữ liệu chưa có các cột trạng thái KYC của tài khoản. Quản trị viên cần chạy migration 20261006_add_kyc_user_status_columns.sql.";
+  } else if (err.code === "ER_NO_SUCH_TABLE" && /verification_requests/i.test(err.message)) {
+    message =
+      "Cơ sở dữ liệu chưa có bảng hồ sơ KYC. Quản trị viên cần cập nhật schema của backend.";
+  } else if (["EACCES", "EPERM"].includes(err.code)) {
+    message = "Máy chủ không có quyền lưu ảnh KYC. Vui lòng báo quản trị viên.";
+  }
   res.status(statusCode).json({ success: false, message });
 });
 
 // Chạy Server & Test kết nối DB
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 5000;
 
 server.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);

@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import {
   Building2,
   Check,
-  Map,
   Pencil,
   MapPin,
   Plus,
@@ -13,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { defaultCenter, OpenStreetMap, type MapCoordinate, type MapMarker } from "@/components/OpenStreetMap";
 import { ApiError, adminApi, type AdminLandmark } from "@/services/api";
 
 type LocationTone = "blue" | "emerald" | "amber" | "rose";
@@ -60,12 +60,44 @@ function mapLandmark(item: AdminLandmark): Location {
   };
 }
 
+function getMapView(points: MapMarker[]) {
+  if (!points.length) return { center: defaultCenter, zoom: 6 };
+
+  const center = points.reduce(
+    (average, point) => ({
+      latitude: average.latitude + point.latitude / points.length,
+      longitude: average.longitude + point.longitude / points.length,
+    }),
+    { latitude: 0, longitude: 0 },
+  );
+  const spread = points.reduce(
+    (maximum, point) =>
+      Math.max(maximum, Math.abs(point.latitude - center.latitude), Math.abs(point.longitude - center.longitude)),
+    0,
+  );
+  const zoom = spread > 25 ? 5 : spread > 12 ? 6 : spread > 5 ? 7 : spread > 1 ? 9 : spread > 0.2 ? 11 : spread > 0.03 ? 13 : 15;
+  return { center, zoom };
+}
+
+function parseLocation(latitude: string, longitude: string): MapCoordinate | null {
+  const point = { latitude: Number(latitude), longitude: Number(longitude) };
+  if (!latitude.trim() || !longitude.trim() ||
+      !Number.isFinite(point.latitude) || point.latitude < -90 || point.latitude > 90 ||
+      !Number.isFinite(point.longitude) || point.longitude < -180 || point.longitude > 180) {
+    return null;
+  }
+  return point;
+}
+
 export default function SchoolsPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLocationId, setEditingLocationId] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [form, setForm] = useState({ name: "", address: "", type: "Trường học", latitude: "", longitude: "" });
+  const [mapCenter, setMapCenter] = useState(defaultCenter);
+  const [initialMapLocation, setInitialMapLocation] = useState<MapCoordinate | null>(null);
+  const [selectedMapLocation, setSelectedMapLocation] = useState<MapCoordinate | null>(null);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -95,14 +127,23 @@ export default function SchoolsPage() {
   }, []);
 
   const filteredLocations = locations.filter((location) => `${location.name} ${location.address} ${location.type}`.toLowerCase().includes(query.toLowerCase()));
+  const mapMarkers = locations.flatMap((location): MapMarker[] => {
+    const point = parseLocation(location.latitude, location.longitude);
+    return point ? [{ ...point, label: location.name }] : [];
+  });
+  const mapView = getMapView(mapMarkers);
 
   function openAddModal() {
     setEditingLocationId(null);
     setForm({ name: "", address: "", type: "Trường học", latitude: "", longitude: "" });
+    setMapCenter(defaultCenter);
+    setInitialMapLocation(null);
+    setSelectedMapLocation(null);
     setIsModalOpen(true);
   }
 
   function openEditModal(location: Location) {
+    const point = parseLocation(location.latitude, location.longitude);
     setEditingLocationId(location.id);
     setForm({
       name: location.name,
@@ -111,7 +152,26 @@ export default function SchoolsPage() {
       latitude: location.latitude,
       longitude: location.longitude,
     });
+    setMapCenter(point ?? defaultCenter);
+    setInitialMapLocation(point);
+    setSelectedMapLocation(point);
     setIsModalOpen(true);
+  }
+
+  function updateCoordinate(field: "latitude" | "longitude", value: string) {
+    const nextForm = { ...form, [field]: value };
+    setForm(nextForm);
+    setSelectedMapLocation(parseLocation(nextForm.latitude, nextForm.longitude));
+  }
+
+  function selectMapLocation(point: MapCoordinate) {
+    setForm((current) => ({
+      ...current,
+      latitude: String(point.latitude),
+      longitude: String(point.longitude),
+    }));
+    setSelectedMapLocation(point);
+    setError("");
   }
 
   async function saveLocation() {
@@ -229,46 +289,82 @@ export default function SchoolsPage() {
             </div>
             <span className="inline-flex items-center gap-1.5 rounded-full bg-[#eafaf2] px-2.5 py-1 text-[10px] font-medium text-[#1e9b62]">
               <span className="h-1.5 w-1.5 rounded-full bg-[#1e9b62]" />
-              Bản đồ sẵn sàng
+              OpenStreetMap
             </span>
           </div>
-          <div
-            className="relative h-[330px] overflow-hidden bg-[#e8f0e8]"
-            style={{
-              backgroundImage: "linear-gradient(#d2dfd2 1px, transparent 1px), linear-gradient(90deg, #d2dfd2 1px, transparent 1px)",
-              backgroundSize: "52px 52px",
-            }}
-          >
-            <div className="absolute inset-[9%_7%] rounded-[40%] border-2 border-[#c7d7c6] bg-[#f3f6ec]/70" />
-            <div className="absolute left-[12%] top-[12%] h-[78%] w-3 rotate-[22deg] rounded-full bg-[#d9e7ec]/80" />
-            <div className="absolute right-[14%] top-[4%] h-[92%] w-2 rotate-[68deg] rounded-full bg-[#d9e7ec]/80" />
-            <div className="absolute left-4 top-4 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-[11px] font-medium text-slate-600 shadow-sm">
-              <Map className="mr-1.5 inline h-3.5 w-3.5 text-[#2d5af5]" />
-              Google Maps placeholder
+          {locations.length ? (
+            <OpenStreetMap
+              center={mapView.center}
+              zoom={mapView.zoom}
+              markers={mapMarkers}
+              height={330}
+              className="p-3"
+            />
+          ) : (
+            <div className="flex h-[330px] items-center justify-center bg-slate-50 text-[12px] text-slate-500">
+              Chưa có địa điểm để hiển thị.
             </div>
-            {locations.slice(0, 12).map((location) => {
-              const latitude = Number(location.latitude);
-              const longitude = Number(location.longitude);
-              const left = Math.max(12, Math.min(88, 12 + ((longitude - 105.7) / 0.2) * 76));
-              const top = Math.max(12, Math.min(86, 12 + ((21.08 - latitude) / 0.16) * 74));
-              return (
-                <div key={location.id} className="absolute group" style={{ left: `${left}%`, top: `${top}%` }}>
-                  <MapPin className="h-8 w-8 -translate-x-1/2 -translate-y-full fill-[#2d5af5] text-white drop-shadow-md" />
-                  <div className="absolute left-1/2 top-0 hidden -translate-x-1/2 -translate-y-[calc(100%+22px)] whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-[10px] text-white shadow-sm group-hover:block">
-                    {location.name}
-                  </div>
-                </div>
-              );
-            })}
-            {!locations.length ? <p className="absolute inset-0 flex items-center justify-center text-[12px] text-slate-500">Chưa có địa điểm để hiển thị.</p> : null}
-            <div className="absolute bottom-4 right-4 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 text-[10px] text-slate-500 shadow-sm">
-              Chưa cấu hình Google Maps API
-            </div>
-          </div>
+          )}
         </section>
       </div>
 
-      {isModalOpen ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4" role="dialog" aria-modal="true" aria-labelledby="location-modal-title"><div className="w-full max-w-[560px] rounded-[16px] border border-slate-200 bg-white shadow-xl"><div className="flex items-center justify-between border-b border-slate-200 px-5 py-4"><div><h2 id="location-modal-title" className="text-[17px] font-bold text-slate-900">{editingLocationId ? "Sửa địa điểm" : "Thêm địa điểm"}</h2><p className="mt-1 text-[11px] text-slate-500">Nhập thông tin để {editingLocationId ? "cập nhật" : "thêm"} địa điểm vào hệ thống.</p></div><button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Đóng"><X className="h-5 w-5" /></button></div><div className="grid gap-3 px-5 py-4 sm:grid-cols-2"><label className="sm:col-span-2"><span className="text-[11px] font-medium text-slate-600">Tên địa điểm *</span><input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="Ví dụ: Đại học Bách Khoa Hà Nội" /></label><label className="sm:col-span-2"><span className="text-[11px] font-medium text-slate-600">Địa chỉ *</span><input required value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành" /></label><label><span className="text-[11px] font-medium text-slate-600">Loại địa điểm *</span><select required value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-blue-300"><option>Trường học</option><option>Công viên</option><option>Bảo tàng</option><option>Bệnh viện</option><option>Mua sắm</option><option>Địa điểm khác</option></select></label><div /><label><span className="text-[11px] font-medium text-slate-600">Latitude *</span><input required type="number" min="-90" max="90" step="any" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="21.0077" /></label><label><span className="text-[11px] font-medium text-slate-600">Longitude *</span><input required type="number" min="-180" max="180" step="any" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="105.8431" /></label></div>      <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3"><button type="button" onClick={() => setIsModalOpen(false)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12px] font-medium text-slate-600">Hủy</button><button type="button" disabled={isSubmitting} onClick={() => void saveLocation()} className="inline-flex items-center gap-2 rounded-xl bg-[#2d5af5] px-3.5 py-2.5 text-[12px] font-medium text-white"><Check className="h-4 w-4" />{isSubmitting ? "Đang lưu..." : editingLocationId ? "Lưu thay đổi" : "Thêm địa điểm"}</button></div></div></div> : null}
+      {isModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4" role="dialog" aria-modal="true" aria-labelledby="location-modal-title">
+          <div className="max-h-[92vh] w-full max-w-[760px] overflow-y-auto rounded-[16px] border border-slate-200 bg-white shadow-xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4">
+              <div>
+                <h2 id="location-modal-title" className="text-[17px] font-bold text-slate-900">{editingLocationId ? "Sửa địa điểm" : "Thêm địa điểm"}</h2>
+                <p className="mt-1 text-[11px] text-slate-500">Nhập thông tin và ghim chính xác vị trí trên bản đồ.</p>
+              </div>
+              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-100" aria-label="Đóng"><X className="h-5 w-5" /></button>
+            </div>
+            <div className="space-y-4 px-5 py-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="sm:col-span-2">
+                  <span className="text-[11px] font-medium text-slate-600">Tên địa điểm *</span>
+                  <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="Ví dụ: Đại học Bách Khoa Hà Nội" />
+                </label>
+                <label className="sm:col-span-2">
+                  <span className="text-[11px] font-medium text-slate-600">Địa chỉ *</span>
+                  <input required value={form.address} onChange={(event) => setForm({ ...form, address: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="Số nhà, đường, quận/huyện, tỉnh/thành" />
+                </label>
+                <label className="sm:col-span-2">
+                  <span className="text-[11px] font-medium text-slate-600">Loại địa điểm *</span>
+                  <select required value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[12px] outline-none focus:border-blue-300">
+                    <option>Trường học</option><option>Công viên</option><option>Bảo tàng</option><option>Bệnh viện</option><option>Mua sắm</option><option>Địa điểm khác</option>
+                  </select>
+                </label>
+                <label>
+                  <span className="text-[11px] font-medium text-slate-600">Vĩ độ *</span>
+                  <input required type="number" min="-90" max="90" step="any" value={form.latitude} onChange={(event) => updateCoordinate("latitude", event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="21.0077" />
+                </label>
+                <label>
+                  <span className="text-[11px] font-medium text-slate-600">Kinh độ *</span>
+                  <input required type="number" min="-180" max="180" step="any" value={form.longitude} onChange={(event) => updateCoordinate("longitude", event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[12px] outline-none focus:border-blue-300" placeholder="105.8431" />
+                </label>
+              </div>
+              <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                <p className="mb-2 text-[12px] font-semibold text-slate-800">Chọn vị trí trên bản đồ</p>
+                <p className="mb-3 text-[11px] text-slate-600">Tìm theo địa chỉ hoặc chạm lên bản đồ để tự điền tọa độ.</p>
+                <OpenStreetMap
+                  center={mapCenter}
+                  selectable
+                  address={form.address}
+                  onAddressChange={(address) => setForm({ ...form, address })}
+                  initialLocation={initialMapLocation}
+                  selectedLocation={selectedMapLocation}
+                  onSelect={selectMapLocation}
+                  height={280}
+                />
+              </div>
+            </div>
+            <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white px-5 py-3">
+              <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12px] font-medium text-slate-600">Hủy</button>
+              <button type="button" disabled={isSubmitting} onClick={() => void saveLocation()} className="inline-flex items-center gap-2 rounded-xl bg-[#2d5af5] px-3.5 py-2.5 text-[12px] font-medium text-white disabled:opacity-60"><Check className="h-4 w-4" />{isSubmitting ? "Đang lưu..." : editingLocationId ? "Lưu thay đổi" : "Thêm địa điểm"}</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </AdminLayout>
   );
 }

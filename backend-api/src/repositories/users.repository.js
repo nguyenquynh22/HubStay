@@ -130,6 +130,8 @@ class usersRepository {
       banned_until: "banned_until",
       ban_reason: "ban_reason",
       is_verified: "is_verified",
+      verified_at: "verified_at",
+      kyc_status: "kyc_status",
       is_vip: "is_vip",
       vip_expires_at: "vip_expires_at",
     };

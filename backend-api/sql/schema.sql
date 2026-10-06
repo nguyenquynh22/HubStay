@@ -38,6 +38,7 @@ CREATE TABLE `verification_requests` (
   `account_type` ENUM('STUDENT', 'WORKER', 'LANDLORD') NOT NULL,
   `front_card_url` VARCHAR(255) NOT NULL,
   `back_card_url` VARCHAR(255) DEFAULT NULL,
+  `selfie_image_url` VARCHAR(255) DEFAULT NULL,
   `status` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'PENDING',
   `rejection_reason` TEXT DEFAULT NULL,
   `reviewed_by` INT DEFAULT NULL,
@@ -205,8 +206,6 @@ ALTER TABLE `users`
   ADD COLUMN `kyc_status` ENUM('PENDING', 'APPROVED', 'REJECTED') NOT NULL DEFAULT 'PENDING' AFTER `is_verified`;
 
 ALTER TABLE `verification_requests`
-  ADD COLUMN `front_image_url` VARCHAR(255) NULL AFTER `front_card_url`,
-  ADD COLUMN `back_image_url` VARCHAR(255) NULL AFTER `back_card_url`,
   ADD COLUMN `reviewer_note` TEXT DEFAULT NULL AFTER `rejection_reason`,
   ADD COLUMN `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER `created_at`;
 

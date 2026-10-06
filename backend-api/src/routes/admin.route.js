@@ -3,6 +3,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const db = require("../common/db");
 const requireAdmin = require("../middleware/requireAdmin");
+const VerificationImages = require("../services/verification_images.service");
 
 const router = express.Router();
 const periods = new Set(["7d", "30d", "quarter", "year"]);
@@ -17,6 +18,10 @@ function dateFromPeriod(period) {
 
 function initials(name = "") {
   return name.split(/\s+/).filter(Boolean).slice(-2).map((part) => part[0]).join("").toUpperCase();
+}
+
+function isPrivateKycImage(value) {
+  return typeof value === "string" && /^[0-9a-f-]{36}\.(jpg|png|webp)$/i.test(value);
 }
 
 router.post("/login", async (req, res, next) => {
@@ -123,14 +128,58 @@ router.get("/verifications", async (_req, res, next) => {
       accountType: row.account_type,
       name: row.full_name,
       email: row.email,
-      frontCardUrl: row.front_card_url ?? row.front_image_url ?? null,
-      backCardUrl: row.back_card_url ?? row.back_image_url ?? null,
+      frontCardUrl: isPrivateKycImage(row.front_card_url)
+        ? null
+        : row.front_card_url ?? null,
+      backCardUrl: isPrivateKycImage(row.back_card_url)
+        ? null
+        : row.back_card_url ?? null,
+      frontImageAvailable: isPrivateKycImage(row.front_card_url),
+      backImageAvailable: isPrivateKycImage(row.back_card_url),
+      selfieAvailable: isPrivateKycImage(row.selfie_image_url),
       status: row.status,
       rejectionReason: row.rejection_reason ?? null,
       initials: initials(row.full_name),
       avatar: row.avatar_url,
       createdAt: row.created_at,
     })) });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.get("/verifications/:id/images/:kind", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const imageColumns = {
+      front: "front_card_url",
+      back: "back_card_url",
+      selfie: "selfie_image_url",
+    };
+    const imageColumn = imageColumns[req.params.kind];
+    if (!Number.isInteger(id) || id < 1) {
+      return res.status(400).json({ success: false, message: "Mã hồ sơ không hợp lệ." });
+    }
+    if (!imageColumn) {
+      return res.status(400).json({ success: false, message: "Loại ảnh không hợp lệ." });
+    }
+    const [rows] = await db.query(
+      `SELECT ${imageColumn} AS image_path FROM verification_requests WHERE request_id = ?`,
+      [id],
+    );
+    const filename = rows[0]?.image_path;
+    if (!filename) {
+      return res.status(404).json({ success: false, message: "Hồ sơ không có ảnh này." });
+    }
+    const result = await VerificationImages.readImage(filename);
+    if (!result) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy ảnh." });
+    }
+    res.set({
+      "Cache-Control": "private, no-store",
+      "X-Content-Type-Options": "nosniff",
+    });
+    return res.type(result.mimeType).send(result.image);
   } catch (error) {
     return next(error);
   }

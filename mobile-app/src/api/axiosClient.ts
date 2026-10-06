@@ -8,7 +8,10 @@ const normalizedBaseUrl = configuredBaseUrl
 const api = axios.create({
   baseURL: normalizedBaseUrl,
   timeout: 30000,
-  headers: { Accept: "application/json" },
+  headers: {
+    Accept: "application/json",
+    "ngrok-skip-browser-warning": "true",
+  },
 });
 
 export default api;

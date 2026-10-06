@@ -31,6 +31,12 @@ export default function VerificationPage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [imagePreview, setImagePreview] = useState<{ url: string; label: string } | null>(null);
+  const [loadingImageKey, setLoadingImageKey] = useState("");
+
+  useEffect(() => () => {
+    if (imagePreview) URL.revokeObjectURL(imagePreview.url);
+  }, [imagePreview]);
 
   async function loadApplications() {
     setIsLoading(true);
@@ -90,6 +96,24 @@ export default function VerificationPage() {
     }
   }
 
+  async function showImage(
+    application: AdminVerification,
+    kind: "front" | "back" | "selfie",
+    label: string,
+  ) {
+    const key = `${application.id}-${kind}`;
+    setLoadingImageKey(key);
+    setError("");
+    try {
+      const image = await adminApi.verificationImage(application.id, kind);
+      setImagePreview({ url: URL.createObjectURL(image), label });
+    } catch (cause) {
+      setError(cause instanceof ApiError ? cause.message : "Không thể tải ảnh xác minh.");
+    } finally {
+      setLoadingImageKey("");
+    }
+  }
+
   const stats = [
     { label: "CHỜ XÁC THỰC", value: pending, icon: Clock3, tone: "amber" },
     { label: "ĐÃ XÁC THỰC", value: approved, icon: BadgeCheck, tone: "emerald" },
@@ -131,7 +155,7 @@ export default function VerificationPage() {
           <div className="overflow-x-auto">
             <table className="min-w-[980px] w-full text-left">
               <thead className="bg-slate-50 text-[11px] font-semibold uppercase tracking-[0.02em] text-slate-500">
-                <tr><th className="px-3 py-3">Mã hồ sơ</th><th className="px-3 py-3">Người dùng</th><th className="px-3 py-3">Loại tài khoản</th><th className="px-3 py-3">Giấy tờ</th><th className="px-3 py-3">Ngày gửi</th><th className="px-3 py-3">Trạng thái</th><th className="px-3 py-3 text-right">Thao tác</th></tr>
+                <tr><th className="px-3 py-3">Mã hồ sơ</th><th className="px-3 py-3">Người dùng</th><th className="px-3 py-3">Loại tài khoản</th><th className="px-3 py-3">Ảnh xác minh</th><th className="px-3 py-3">Ngày gửi</th><th className="px-3 py-3">Trạng thái</th><th className="px-3 py-3 text-right">Thao tác</th></tr>
               </thead>
               <tbody className="divide-y divide-slate-200 text-[13px] text-slate-700">
                 {filtered.map((item) => (
@@ -141,9 +165,27 @@ export default function VerificationPage() {
                     <td className="px-3 py-3">{accountLabels[item.accountType] ?? item.accountType}</td>
                     <td className="px-3 py-3">
                       <div className="flex gap-2">
-                        {item.frontCardUrl ? <a href={item.frontCardUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline">Mặt trước</a> : <span className="text-slate-400">Không có ảnh</span>}
-                        {item.backCardUrl ? <a href={item.backCardUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline">Mặt sau</a> : null}
+                        {item.frontImageAvailable ? (
+                          <button type="button" disabled={loadingImageKey === `${item.id}-front`} onClick={() => void showImage(item, "front", "Ảnh mặt trước")} className="text-blue-700 underline disabled:opacity-50">
+                            {loadingImageKey === `${item.id}-front` ? "Đang tải..." : "Mặt trước"}
+                          </button>
+                        ) : item.frontCardUrl ? <a href={item.frontCardUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline">Mặt trước</a> : <span className="text-slate-400">Không có ảnh</span>}
+                        {item.backImageAvailable ? (
+                          <button type="button" disabled={loadingImageKey === `${item.id}-back`} onClick={() => void showImage(item, "back", "Ảnh mặt sau")} className="text-blue-700 underline disabled:opacity-50">
+                            {loadingImageKey === `${item.id}-back` ? "Đang tải..." : "Mặt sau"}
+                          </button>
+                        ) : item.backCardUrl ? <a href={item.backCardUrl} target="_blank" rel="noreferrer" className="text-blue-700 underline">Mặt sau</a> : null}
                       </div>
+                      {item.selfieAvailable ? (
+                        <button
+                          type="button"
+                          disabled={loadingImageKey === `${item.id}-selfie`}
+                          onClick={() => void showImage(item, "selfie", "Ảnh chân dung")}
+                          className="mt-2 text-blue-700 underline disabled:opacity-50"
+                        >
+                          {loadingImageKey === `${item.id}-selfie` ? "Đang tải ảnh..." : "Xem ảnh chân dung"}
+                        </button>
+                      ) : null}
                     </td>
                     <td className="whitespace-nowrap px-3 py-3">{formatDate(item.createdAt)}</td>
                     <td className="px-3 py-3">{statusLabels[item.status]}</td>
@@ -162,6 +204,28 @@ export default function VerificationPage() {
           </div>
         </section>
       </div>
+      {imagePreview ? (
+        <div
+          role="presentation"
+          onClick={() => setImagePreview(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={imagePreview.label}
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[90vh] max-w-[90vw] rounded-xl bg-white p-3"
+          >
+            <div className="mb-2 flex justify-end">
+              <button type="button" onClick={() => setImagePreview(null)} className="text-sm font-semibold text-slate-700">
+                Đóng
+              </button>
+            </div>
+            <img src={imagePreview.url} alt={imagePreview.label} className="max-h-[78vh] max-w-full object-contain" />
+          </div>
+        </div>
+      ) : null}
     </AdminLayout>
   );
 }
