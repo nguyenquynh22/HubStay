@@ -4,6 +4,9 @@ const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 
+const invalidPostInput = (message) =>
+  Object.assign(new Error(message), { code: "INVALID_POST_INPUT" });
+
 class postsRepository {
   static calculateDistanceKm(fromLat, fromLng, toLat, toLng) {
     const earthRadiusKm = 6371;
@@ -91,33 +94,33 @@ class postsRepository {
       ? data.images.filter(Boolean)
       : [];
     if (payloadImages.length > 6) {
-      throw new Error("Mỗi bài đăng chỉ được tải tối đa 6 ảnh.");
+      throw invalidPostInput("Mỗi bài đăng chỉ được tải tối đa 6 ảnh.");
     }
     let totalImageBytes = 0;
     for (const imageUrl of payloadImages) {
       if (typeof imageUrl !== "string") {
-        throw new Error("Định dạng ảnh không hợp lệ.");
+        throw invalidPostInput("Định dạng ảnh không hợp lệ.");
       }
       const dataUri = imageUrl.match(
         /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
       );
       if (imageUrl.startsWith("data:") && !dataUri) {
-        throw new Error(
+        throw invalidPostInput(
           "Chỉ hỗ trợ ảnh JPEG, PNG hoặc WebP; video không được hỗ trợ.",
         );
       }
       if (dataUri) {
         const imageBytes = Buffer.from(dataUri[2], "base64").length;
         if (!imageBytes || imageBytes > 8 * 1024 * 1024) {
-          throw new Error("Mỗi ảnh không được vượt quá 8 MB.");
+          throw invalidPostInput("Mỗi ảnh không được vượt quá 8 MB.");
         }
         totalImageBytes += imageBytes;
       } else if (/\.(mp4|mov|m4v|webm|avi)(?:[?#].*)?$/i.test(imageUrl)) {
-        throw new Error("Video không được hỗ trợ trong bài đăng.");
+        throw invalidPostInput("Video không được hỗ trợ trong bài đăng.");
       }
     }
     if (totalImageBytes > 30 * 1024 * 1024) {
-      throw new Error("Tổng dung lượng ảnh không được vượt quá 30 MB.");
+      throw invalidPostInput("Tổng dung lượng ảnh không được vượt quá 30 MB.");
     }
 
     const [result] = await db.query(sql, values);
@@ -132,26 +135,13 @@ class postsRepository {
             /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
           );
         if (dataUri) {
-          const extension = {
-            "image/jpeg": "jpg",
-            "image/png": "png",
-            "image/webp": "webp",
-          }[dataUri[1]];
-          const buffer = Buffer.from(dataUri[2], "base64");
-          if (!buffer.length || buffer.length > 8 * 1024 * 1024)
-            throw new Error("Image is invalid or larger than 8 MB.");
-          const filename = `${crypto.randomUUID()}.${extension}`;
-          const directory = path.join(__dirname, "../../uploads/posts");
-          await fs.mkdir(directory, { recursive: true });
-          await fs.writeFile(path.join(directory, filename), buffer, {
-            flag: "wx",
-          });
-          storedUrl = `/uploads/posts/${filename}`;
+          const cloudinary = require("../services/cloudinary.service");
+          storedUrl = await cloudinary.uploadBase64Image(imageUrl, "posts");
         } else if (
           typeof imageUrl !== "string" ||
           imageUrl.startsWith("data:")
         ) {
-          throw new Error("Unsupported image format.");
+          throw invalidPostInput("Định dạng ảnh không được hỗ trợ.");
         }
         await db.query(
           "INSERT INTO post_images (post_id, image_url, is_cover) VALUES (?, ?, ?)",
@@ -326,7 +316,8 @@ class postsRepository {
             };
           })
           .filter(
-            (post) => radiusKm == null || post.exact_distance_km <= Number(radiusKm),
+            (post) =>
+              radiusKm == null || post.exact_distance_km <= Number(radiusKm),
           )
           .map(({ exact_distance_km, ...post }) => post)
       : rows;
@@ -369,6 +360,56 @@ class postsRepository {
       distance_label: `${distanceKm.toFixed(1)} km`,
       post,
     };
+  }
+
+  static async isAreaPromotionVipActive(authorId) {
+    const [rows] = await db.query(
+      `SELECT 1
+       FROM users u
+       JOIN subscriptions s ON s.user_id = u.user_id
+       WHERE u.user_id = ?
+         AND u.is_vip = 1
+         AND (u.vip_expires_at IS NULL OR u.vip_expires_at > NOW())
+         AND s.package_name IN ('VIP_3_MONTHS', 'VIP_1_YEAR')
+         AND s.status = 'ACTIVE'
+         AND s.start_date <= NOW()
+         AND s.end_date > NOW()
+       LIMIT 1`,
+      [authorId],
+    );
+    return rows.length > 0;
+  }
+
+  static async getNearbyFinders({
+    latitude,
+    longitude,
+    authorId,
+    radiusKm = 10,
+  }) {
+    const distance = `6371 * ACOS(LEAST(1, GREATEST(-1,
+      COS(RADIANS(?)) * COS(RADIANS(COALESCE(l.latitude, p.post_lat))) *
+      COS(RADIANS(COALESCE(l.longitude, p.post_lng)) - RADIANS(?)) +
+      SIN(RADIANS(?)) * SIN(RADIANS(COALESCE(l.latitude, p.post_lat)))
+    )))`;
+    const [rows] = await db.query(
+      `SELECT u.user_id, MIN(${distance}) AS distance_km
+       FROM posts p
+       JOIN users u ON u.user_id = p.author_id
+       LEFT JOIN landmarks l ON l.landmark_id = p.landmark_id
+       WHERE p.post_type = 'FIND'
+         AND p.status = 'AVAILABLE'
+         AND p.is_approved = 1
+         AND u.status = 'ACTIVE'
+         AND p.author_id <> ?
+         AND COALESCE(l.latitude, p.post_lat) IS NOT NULL
+         AND COALESCE(l.longitude, p.post_lng) IS NOT NULL
+      GROUP BY u.user_id
+       HAVING distance_km < ?
+       ORDER BY distance_km ASC
+       LIMIT 250`,
+      [latitude, longitude, latitude, authorId, radiusKm],
+    );
+    return rows;
   }
 }
 

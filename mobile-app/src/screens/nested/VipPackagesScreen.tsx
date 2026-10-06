@@ -139,12 +139,12 @@ export default function VipPackagesScreen({ onBack, userId }: Props) {
             {purchasing ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text style={styles.buttonText}>Thanh toán bằng số dư ví</Text>
+              <Text style={styles.buttonText}>Thanh toán bằng ví nội bộ</Text>
             )}
           </TouchableOpacity>
           <Text style={styles.footnote}>
-            Cần tài khoản chủ trọ đã xác minh và số dư đủ. Giá lấy từ cấu hình
-            backend.
+            Thanh toán trực tiếp bằng ví nội bộ. Cần tài khoản chủ trọ đã xác
+            minh và số dư đủ. Giá lấy từ cấu hình backend.
           </Text>
         </ScrollView>
       )}

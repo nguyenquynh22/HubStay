@@ -12,28 +12,6 @@ module.exports = {
     }
   },
 
-  getById: async (req, res, next) => {
-    try {
-      const item = await Repo.getById(req.params.id);
-      if (!item)
-        return res.status(404).json({ success: false, message: "Not found" });
-      res.json({ success: true, data: item });
-    } catch (err) {
-      next(err);
-    }
-  },
-
-  getByAuthor: async (req, res, next) => {
-    try {
-      const authorId = req.params.userId;
-      const order = req.query.sort === "oldest" ? "ASC" : "DESC";
-      const data = await Repo.getByAuthorId(authorId, order);
-      res.json({ success: true, data });
-    } catch (err) {
-      next(err);
-    }
-  },
-
   getNearbyByLandmark: async (req, res, next) => {
     try {
       const landmarkId = Number(
@@ -211,12 +189,50 @@ module.exports = {
         "Tin đăng của bạn đã được xuất bản.",
         { post_id: newItem.post_id },
       );
+      const authorId = Number(req.body.user_id ?? req.body.author_id);
+      const postType = newItem.post_type ?? newItem.type;
+      try {
+        if (
+          postType !== "FIND" &&
+          Number.isFinite(Number(newItem.latitude ?? newItem.post_lat)) &&
+          Number.isFinite(Number(newItem.longitude ?? newItem.post_lng)) &&
+          (await Repo.isAreaPromotionVipActive(authorId))
+        ) {
+          const nearbyFinders = await Repo.getNearbyFinders({
+            latitude: Number(newItem.latitude ?? newItem.post_lat),
+            longitude: Number(newItem.longitude ?? newItem.post_lng),
+            authorId,
+          });
+          await Promise.all(
+            nearbyFinders.map((finder) =>
+              Notifications.notify(
+                finder.user_id,
+                "NEARBY_VIP_POST",
+                "Có phòng VIP gần địa điểm bạn ưu tiên",
+                `${newItem.title} phù hợp với vị trí tìm trọ của bạn, cách khoảng ${Number(finder.distance_km).toFixed(1)} km.`,
+                {
+                  post_id: newItem.post_id,
+                  distance_km: Number(finder.distance_km),
+                },
+              ),
+            ),
+          );
+        }
+      } catch (notificationError) {
+        console.error(
+          "Nearby VIP notifications failed:",
+          notificationError.message,
+        );
+      }
       res.status(201).json({
         success: true,
         message: "Created successfully",
         data: newItem,
       });
     } catch (err) {
+      if (err.code === "INVALID_POST_INPUT") {
+        return res.status(400).json({ success: false, message: err.message });
+      }
       next(err);
     }
   },

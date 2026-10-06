@@ -195,7 +195,7 @@ export default function ChatDetailScreen({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F7F9FA" },
+  container: { flex: 1, backgroundColor: "#F7F9FA", paddingTop: 40 },
   header: {
     padding: 14,
     backgroundColor: "#FFF",
@@ -246,6 +246,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     borderTopWidth: 1,
     borderColor: "#DCE5E8",
+    paddingBottom: 40,
   },
   input: {
     flex: 1,

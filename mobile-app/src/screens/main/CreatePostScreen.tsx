@@ -492,7 +492,9 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
       const matchCount = landmarkTokens.filter((token) =>
         searchableText
           .split(/[^a-z0-9]+/)
-          .some((word: string) => word.startsWith(token) || word.includes(token)),
+          .some(
+            (word: string) => word.startsWith(token) || word.includes(token),
+          ),
       ).length;
       const exactMatch = searchableText.includes(landmarkTokens.join(" "));
       return {
@@ -570,10 +572,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
         response: error?.response?.data ?? null,
       });
       setLandmarkFormError(message);
-      Alert.alert(
-        "Không thêm được địa điểm",
-        message,
-      );
+      Alert.alert("Không thêm được địa điểm", message);
     } finally {
       setSubmitting(false);
     }
@@ -593,14 +592,18 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
     const numericPrice = Number(price.replace(/[^0-9]/g, ""));
     const postCoordinates = coords;
     const { province, district, ward } = administrativeArea;
+    const isImageRequired = postType !== "FIND"; // Chỉ bắt buộc ảnh nếu KHÔNG PHẢI tin FIND
+
     const missingFields = [
       !title.trim() ? "Tiêu đề" : "",
       !description.trim() ? "Mô tả chi tiết" : "",
       !price.trim() || !Number.isFinite(numericPrice) || numericPrice <= 0
         ? "Giá thuê lớn hơn 0"
         : "",
-      images.length < 2 ? "Ít nhất 2 ảnh" : "",
+      // Chỉ kiểm tra số lượng ảnh khi loại tin không phải là FIND
+      isImageRequired && images.length < 2 ? "Ít nhất 2 ảnh" : "",
     ].filter(Boolean);
+
     if (missingFields.length) {
       const message = `Cần bổ sung: ${missingFields.join("; ")}.`;
       console.warn("[CreatePost] Không gửi request, thiếu thông tin.", {
@@ -636,9 +639,12 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
     );
     if (matchedBlockedWord) {
       const message = `Nội dung chứa từ không phù hợp: "${matchedBlockedWord}".`;
-      console.warn("[CreatePost] Không gửi request vì nội dung có từ không phù hợp.", {
-        matchedWord: matchedBlockedWord,
-      });
+      console.warn(
+        "[CreatePost] Không gửi request vì nội dung có từ không phù hợp.",
+        {
+          matchedWord: matchedBlockedWord,
+        },
+      );
       setPostSubmitStatus({ kind: "error", message });
       Alert.alert(
         "Nội dung chưa phù hợp",
@@ -711,10 +717,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
       });
       setPostSubmitStatus({ kind: "error", message });
       setSubmitValidationError(message);
-      Alert.alert(
-        "Không đăng được bài",
-        message,
-      );
+      Alert.alert("Không đăng được bài", message);
     } finally {
       setSubmitting(false);
     }
@@ -1072,7 +1075,8 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
             Địa chỉ chi tiết
           </Text>
           <Text style={styles.locationNote}>
-            Không bắt buộc. Có thể nhập số nhà, tên đường, thôn/xóm để người thuê dễ tìm.
+            Không bắt buộc. Có thể nhập số nhà, tên đường, thôn/xóm để người
+            thuê dễ tìm.
           </Text>
           <TextInput
             style={styles.input}

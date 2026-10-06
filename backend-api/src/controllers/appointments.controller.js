@@ -73,6 +73,9 @@ module.exports = {
         typeof req.body.guest_phone === "string"
           ? req.body.guest_phone.trim()
           : "";
+      const appointmentDateTime = new Date(
+        `${appointmentDate}T${appointmentTime}:00`,
+      );
 
       if (!postId || !actorId)
         return res.status(400).json({
@@ -81,6 +84,14 @@ module.exports = {
         });
       if (!isValidDate(appointmentDate) || !isValidTime(appointmentTime))
         return invalidAppointmentTime(res);
+      if (
+        Number.isNaN(appointmentDateTime.getTime()) ||
+        appointmentDateTime <= new Date()
+      )
+        return res.status(400).json({
+          success: false,
+          message: "Lịch xem phòng phải đặt trong tương lai",
+        });
 
       const post = await Repo.getPost(postId);
       if (!post)

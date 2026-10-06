@@ -1,24 +1,80 @@
 import React, { useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ScrollView,
+  ActivityIndicator,
   Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { createReport } from "../../services/api";
 
 interface Props {
   onBack: () => void;
+  postId: number;
+  userId: number;
 }
-export default function ReportPostScreen({ onBack }: Props) {
+export default function ReportPostScreen({ onBack, postId, userId }: Props) {
   const [reason, setReason] = useState("Lừa đảo");
+  const [description, setDescription] = useState("");
+  const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const reasons = [
     "Lừa đảo",
     "Báo giá sai",
     "Phòng không đúng ảnh",
     "Nội dung không phù hợp",
   ];
+
+  const pickEvidence = async () => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        "Quyền truy cập ảnh bị từ chối",
+        "Vui lòng cấp quyền để tiếp tục.",
+      );
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.85,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]?.base64) {
+      setEvidenceImage(
+        `data:${result.assets[0].mimeType || "image/jpeg"};base64,${result.assets[0].base64}`,
+      );
+    }
+  };
+
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      const result = await createReport({
+        post_id: postId,
+        reporter_id: userId,
+        reason,
+        description: description.trim() || undefined,
+        evidence_image_url: evidenceImage || undefined,
+      });
+      Alert.alert(
+        "Đã gửi báo cáo",
+        result.message || "Báo cáo đang chờ quản trị xử lý.",
+        [{ text: "Đóng", onPress: onBack }],
+      );
+    } catch (error: any) {
+      Alert.alert(
+        "Không gửi được báo cáo",
+        error?.response?.data?.message || "Vui lòng thử lại.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -40,7 +96,7 @@ export default function ReportPostScreen({ onBack }: Props) {
           >
             <View
               style={[styles.radio, reason === item && styles.activeRadio]}
-            />{" "}
+            />
             <Text
               style={[
                 styles.reasonText,
@@ -51,20 +107,36 @@ export default function ReportPostScreen({ onBack }: Props) {
             </Text>
           </TouchableOpacity>
         ))}
+        <Text style={styles.label}>Mô tả thêm</Text>
+        <TextInput
+          value={description}
+          onChangeText={setDescription}
+          placeholder="Thêm chi tiết nếu cần"
+          multiline
+          style={[styles.input, styles.note]}
+          placeholderTextColor="#9AAAB0"
+        />
         <Text style={styles.label}>Ảnh chứng minh</Text>
-        <TouchableOpacity style={styles.upload}>
-          <Text style={styles.uploadIcon}>＋</Text>
-          <Text style={styles.uploadText}>Thêm ảnh hoặc video</Text>
+        <TouchableOpacity style={styles.upload} onPress={pickEvidence}>
+          {evidenceImage ? (
+            <Text style={styles.uploadText}>Đã chọn ảnh chứng minh</Text>
+          ) : (
+            <>
+              <Text style={styles.uploadIcon}>＋</Text>
+              <Text style={styles.uploadText}>Thêm ảnh hoặc video</Text>
+            </>
+          )}
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.button}
-          onPress={() =>
-            Alert.alert("Cảm ơn bạn", "Báo cáo đã được gửi để kiểm duyệt.", [
-              { text: "Đóng", onPress: onBack },
-            ])
-          }
+          style={[styles.button, submitting && styles.buttonDisabled]}
+          onPress={submit}
+          disabled={submitting}
         >
-          <Text style={styles.buttonText}>Gửi báo cáo</Text>
+          {submitting ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.buttonText}>Gửi báo cáo</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -136,6 +208,16 @@ const styles = StyleSheet.create({
   },
   uploadIcon: { color: "#E77D58", fontSize: 28 },
   uploadText: { color: "#71858C", marginTop: 4 },
+  input: {
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#DCE5E8",
+    padding: 12,
+    color: "#263B43",
+    textAlignVertical: "top",
+  },
+  note: { minHeight: 90, marginBottom: 8 },
   button: {
     backgroundColor: "#E77D58",
     borderRadius: 13,
@@ -143,5 +225,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 24,
   },
+  buttonDisabled: { opacity: 0.6 },
   buttonText: { color: "#FFF", fontWeight: "800" },
 });

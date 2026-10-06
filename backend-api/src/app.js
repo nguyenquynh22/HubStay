@@ -27,11 +27,14 @@ app.use(morgan("dev"));
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
-app.use("/uploads", express.static(path.resolve(__dirname, "../uploads"), {
-  dotfiles: "deny",
-  immutable: true,
-  maxAge: "1y",
-}));
+app.use(
+  "/uploads",
+  express.static(path.resolve(__dirname, "../uploads"), {
+    dotfiles: "deny",
+    immutable: true,
+    maxAge: "1y",
+  }),
+);
 
 app.get("/", (_req, res) => {
   res.json({
@@ -47,8 +50,17 @@ app.get("/api/health", async (_req, res) => {
     res.json({ status: "ok", database: "connected" });
   } catch (error) {
     console.error("Health check database query failed:", error.message);
-    res.status(503).json({ status: "database_unavailable", database: "disconnected" });
+    res
+      .status(503)
+      .json({ status: "database_unavailable", database: "disconnected" });
   }
+});
+
+app.get("/", (req, res) => {
+  res.json({ success: true, service: "HubStay API", api_prefix: "/api" });
+});
+app.get("/health", (req, res) => {
+  res.json({ success: true, status: "ok" });
 });
 
 // Import các Routes
@@ -66,6 +78,7 @@ const verification_requestsRouter = require("./routes/verification_requests.rout
 const rentalRequestsRoute = require("./routes/rental_requests.route");
 const transactionsRoute = require("./routes/transactions.route");
 const subscriptionsRoute = require("./routes/subscriptions.route");
+const vipPackagesRoute = require("./routes/vip_packages.route");
 const chatRoute = require("./routes/chat.route");
 const administrativeAreasRouter = require("./routes/administrative_areas.route");
 const notificationsRouter = require("./routes/notifications.route");
@@ -78,6 +91,7 @@ app.use("/api/auth", authRouter);
 app.use("/api/rental-requests", rentalRequestsRoute);
 app.use("/api/transactions", transactionsRoute);
 app.use("/api/subscriptions", subscriptionsRoute);
+app.use("/api/vip-packages", vipPackagesRoute);
 app.use("/api/admin", adminRouter);
 app.use("/api/chat", chatRoute);
 app.use("/api/administrative-areas", administrativeAreasRouter);
@@ -111,7 +125,8 @@ app.use((err, req, res, next) => {
     stack: err.stack,
   });
   const status = Number(err.statusCode ?? err.status);
-  const statusCode = Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
+  const statusCode =
+    Number.isInteger(status) && status >= 400 && status < 600 ? status : 500;
   let message =
     statusCode < 500 || process.env.NODE_ENV !== "production"
       ? err.message
@@ -120,7 +135,8 @@ app.use((err, req, res, next) => {
   if (err.type === "entity.too.large") {
     message = "Ảnh gửi lên quá lớn. Hãy chọn ảnh nhỏ hơn rồi thử lại.";
   } else if (err instanceof SyntaxError && statusCode === 400) {
-    message = "Dữ liệu gửi lên không đúng định dạng. Hãy chọn lại ảnh và thử lại.";
+    message =
+      "Dữ liệu gửi lên không đúng định dạng. Hãy chọn lại ảnh và thử lại.";
   } else if (
     err.code === "ER_BAD_FIELD_ERROR" &&
     /selfie_image_url/i.test(err.message)
@@ -133,7 +149,10 @@ app.use((err, req, res, next) => {
   ) {
     message =
       "Cơ sở dữ liệu chưa có các cột trạng thái KYC của tài khoản. Quản trị viên cần chạy migration 20261006_add_kyc_user_status_columns.sql.";
-  } else if (err.code === "ER_NO_SUCH_TABLE" && /verification_requests/i.test(err.message)) {
+  } else if (
+    err.code === "ER_NO_SUCH_TABLE" &&
+    /verification_requests/i.test(err.message)
+  ) {
     message =
       "Cơ sở dữ liệu chưa có bảng hồ sơ KYC. Quản trị viên cần cập nhật schema của backend.";
   } else if (["EACCES", "EPERM"].includes(err.code)) {
