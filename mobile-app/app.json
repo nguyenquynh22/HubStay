@@ -10,8 +10,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Cho phép HubStay chọn ảnh phòng trọ từ album của bạn.",
-          "cameraPermission": "Cho phép HubStay chụp ảnh phòng trọ.",
+          "photosPermission": "Cho phép HubStay chọn ảnh phòng trọ và ảnh giấy tờ xác minh từ album của bạn.",
+          "cameraPermission": "Cho phép HubStay chụp ảnh phòng trọ và ảnh chân dung xác minh.",
           "microphonePermission": false
         }
       ]

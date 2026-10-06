@@ -1,6 +1,7 @@
 ﻿const Repo = require("../repositories/verification_requests.repository");
 const UsersRepo = require("../repositories/users.repository");
 const Notifications = require("../services/notifications.service");
+const VerificationImages = require("../services/verification_images.service");
 
 module.exports = {
   devVerify: async (req, res, next) => {
@@ -37,7 +38,10 @@ module.exports = {
   getAll: async (req, res, next) => {
     try {
       const data = await Repo.getAll();
-      res.json({ success: true, data });
+      res.json({
+        success: true,
+        data: data.map(({ front_card_url, back_card_url, selfie_image_url, ...item }) => item),
+      });
     } catch (err) {
       next(err);
     }
@@ -48,7 +52,13 @@ module.exports = {
       const item = await Repo.getById(req.params.id);
       if (!item)
         return res.status(404).json({ success: false, message: "Not found" });
-      res.json({ success: true, data: item });
+      const {
+        front_card_url,
+        back_card_url,
+        selfie_image_url,
+        ...publicItem
+      } = item;
+      res.json({ success: true, data: publicItem });
     } catch (err) {
       next(err);
     }
@@ -57,7 +67,10 @@ module.exports = {
   getByUser: async (req, res, next) => {
     try {
       const data = await Repo.getByUserId(req.params.userId);
-      res.json({ success: true, data });
+      res.json({
+        success: true,
+        data: data.map(({ front_card_url, back_card_url, selfie_image_url, ...item }) => item),
+      });
     } catch (err) {
       next(err);
     }
@@ -67,14 +80,15 @@ module.exports = {
     try {
       const user_id = Number(req.body.user_id);
       const account_type = req.body.account_type || "STUDENT";
-      const front_card_url =
-        req.body.front_card_url || req.body.front_image_url;
-      const back_card_url =
-        req.body.back_card_url || req.body.back_image_url || null;
-      if (!Number.isInteger(user_id) || user_id < 1 || !front_card_url) {
+      if (
+        !Number.isInteger(user_id) ||
+        user_id < 1 ||
+        !req.body.front_image ||
+        !req.body.selfie_image
+      ) {
         return res.status(400).json({
           success: false,
-          message: "user_id và front_card_url là bắt buộc",
+          message: "user_id, ảnh mặt trước giấy tờ và ảnh chân dung là bắt buộc",
         });
       }
       if (!["STUDENT", "WORKER", "LANDLORD"].includes(account_type)) {
@@ -100,18 +114,40 @@ module.exports = {
         });
       }
 
-      const newItem = await Repo.create({
-        user_id,
-        account_type: account_type || "STUDENT",
-        front_card_url,
-        back_card_url: back_card_url || null,
-        status: "PENDING",
-      });
+      const storedImages = [];
+      let newItem;
+      try {
+        const frontImage = await VerificationImages.storeImage(req.body.front_image);
+        storedImages.push(frontImage.filename);
+        const backImage = req.body.back_image
+          ? await VerificationImages.storeImage(req.body.back_image)
+          : null;
+        if (backImage) storedImages.push(backImage.filename);
+        const selfieImage = await VerificationImages.storeImage(req.body.selfie_image);
+        storedImages.push(selfieImage.filename);
+        newItem = await Repo.create({
+          user_id,
+          account_type: account_type || "STUDENT",
+          front_card_url: frontImage.filename,
+          back_card_url: backImage?.filename || null,
+          selfie_image_url: selfieImage.filename,
+          status: "PENDING",
+        });
+      } catch (error) {
+        await Promise.all(storedImages.map((filename) => VerificationImages.removeImage(filename)));
+        throw error;
+      }
       await UsersRepo.update(user_id, { kyc_status: "PENDING" });
+      const {
+        front_card_url,
+        back_card_url,
+        selfie_image_url,
+        ...responseItem
+      } = newItem;
       res.status(201).json({
         success: true,
         message: "Yêu cầu xác thực đã được gửi",
-        data: newItem,
+        data: responseItem,
       });
     } catch (err) {
       next(err);

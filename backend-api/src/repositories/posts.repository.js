@@ -325,7 +325,9 @@ class postsRepository {
               distance_km: Number(exactDistanceKm.toFixed(1)),
             };
           })
-          .filter((post) => post.exact_distance_km <= Number(radiusKm))
+          .filter(
+            (post) => radiusKm == null || post.exact_distance_km <= Number(radiusKm),
+          )
           .map(({ exact_distance_km, ...post }) => post)
       : rows;
 

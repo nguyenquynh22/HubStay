@@ -96,8 +96,15 @@ module.exports = {
         });
       }
 
-      const radiusKm = Number(req.query.radius_km ?? 10);
-      if (landmarkId != null && ![5, 10, 20, 30].includes(radiusKm)) {
+      const radiusKm =
+        req.query.radius_km === "all"
+          ? null
+          : Number(req.query.radius_km ?? 10);
+      if (
+        landmarkId != null &&
+        radiusKm != null &&
+        ![5, 10, 20, 30].includes(radiusKm)
+      ) {
         return res.status(400).json({
           success: false,
           message: "Bán kính phải là 5, 10, 20 hoặc 30 km",
@@ -153,14 +160,13 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      if (
-        ContentModeration.findBlockedWord(
-          `${req.body.title || ""} ${req.body.description || ""}`,
-        )
-      ) {
+      const blockedWord = ContentModeration.findBlockedWord(
+        `${req.body.title || ""} ${req.body.description || ""}`,
+      );
+      if (blockedWord) {
         return res.status(400).json({
           success: false,
-          message: "Tiêu đề hoặc mô tả chứa ngôn từ không phù hợp.",
+          message: `Tiêu đề hoặc mô tả chứa từ không phù hợp: "${blockedWord}".`,
         });
       }
       const areaCodes = [
