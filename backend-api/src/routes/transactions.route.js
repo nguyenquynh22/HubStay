@@ -1,12 +1,17 @@
 const express = require("express");
 const router = express.Router();
 const controller = require("../controllers/transactions.controller");
+const requireUser = require("../middleware/requireUser");
 
-router.get("/", controller.getAll);
-router.get("/:id", controller.getById);
-router.get("/user/:userId", controller.getByUser);
-router.post("/", controller.create);
-router.post("/dev/:id/simulate-success", controller.simulateSuccess);
-router.patch("/:id/status", controller.updateStatus);
+router.get("/", requireUser, controller.getAll);
+router.get("/user/:userId", requireUser, controller.getByUser);
+router.get("/:id", requireUser, controller.getById);
+router.post("/", requireUser, controller.create);
+router.post(
+  "/dev/:id/simulate-success",
+  requireUser,
+  controller.simulateSuccess,
+);
+router.patch("/:id/status", requireUser, controller.updateStatus);
 
 module.exports = router;

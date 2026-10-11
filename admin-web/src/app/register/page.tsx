@@ -17,7 +17,7 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 import RoleCard from "@/components/auth/RoleCard";
 import { ApiError, adminApi } from "@/services/api";
@@ -32,6 +32,18 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [otpPending, setOtpPending] = useState(false);
+  const [pendingEmail, setPendingEmail] = useState("");
+  const [resendSeconds, setResendSeconds] = useState(0);
+
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = window.setTimeout(
+      () => setResendSeconds((seconds) => seconds - 1),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [resendSeconds]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -45,12 +57,51 @@ export default function RegisterPage() {
     const password = String(form.get("password") ?? "");
     const confirmPassword = String(form.get("confirmPassword") ?? "");
 
+    if (otpPending) {
+      const otp = String(form.get("otp") ?? "").trim();
+      if (!/^\d{6}$/.test(otp)) {
+        setError("Vui lòng nhập mã OTP gồm 6 chữ số.");
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const result = await adminApi.verifyRegistrationOtp(pendingEmail, otp);
+        setSuccess(result.message);
+        setOtpPending(false);
+        setResendSeconds(0);
+        formElement.reset();
+        setAgreeTerms(false);
+      } catch (reason) {
+        setError(
+          reason instanceof ApiError
+            ? reason.message
+            : "Không thể kết nối máy chủ.",
+        );
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (!email) {
       setError("Vui lòng nhập email.");
       return;
     }
     if (password !== confirmPassword) {
       setError("Mật khẩu xác nhận không khớp.");
+      return;
+    }
+    if (
+      password.length < 8 ||
+      password.length > 72 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/\d/.test(password) ||
+      !/[^A-Za-z0-9]/.test(password)
+    ) {
+      setError(
+        "Mật khẩu cần ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+      );
       return;
     }
     if (!agreeTerms) {
@@ -68,10 +119,33 @@ export default function RegisterPage() {
         role,
       });
       setSuccess(result.message);
-      formElement.reset();
-      setAgreeTerms(false);
+      setPendingEmail(email.toLowerCase());
+      setOtpPending(true);
+      setResendSeconds(60);
     } catch (reason) {
-      setError(reason instanceof ApiError ? reason.message : "Không thể kết nối máy chủ.");
+      setError(
+        reason instanceof ApiError
+          ? reason.message
+          : "Không thể kết nối máy chủ.",
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    setError("");
+    setIsSubmitting(true);
+    try {
+      const result = await adminApi.resendRegistrationOtp(pendingEmail);
+      setSuccess(result.message);
+      setResendSeconds(60);
+    } catch (reason) {
+      setError(
+        reason instanceof ApiError
+          ? reason.message
+          : "Không thể kết nối máy chủ.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -80,18 +154,13 @@ export default function RegisterPage() {
   return (
     <main className="h-screen overflow-hidden bg-white">
       <div className="flex h-full w-full">
-
         {/* =====================================================
             BÊN TRÁI
         ===================================================== */}
         <aside className="hidden h-full w-[38%] shrink-0 bg-[#2d5af5] text-white lg:block">
           <div className="flex h-full flex-col px-10 py-9 xl:px-14">
-
             {/* Logo */}
-            <Link
-              href="/"
-              className="flex w-fit items-center gap-3"
-            >
+            <Link href="/" className="flex w-fit items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/15">
                 <Home className="h-6 w-6" />
               </div>
@@ -103,7 +172,6 @@ export default function RegisterPage() {
 
             {/* Nội dung */}
             <div className="flex flex-1 flex-col justify-center">
-
               <p className="mb-4 text-[13px] font-semibold uppercase tracking-[0.12em] text-blue-100">
                 Tham gia HubStay
               </p>
@@ -115,8 +183,7 @@ export default function RegisterPage() {
               </h1>
 
               <p className="mt-5 max-w-[410px] text-[15px] leading-6 text-blue-100">
-                Tìm phòng, tìm bạn ở ghép hoặc đăng chỗ ở
-                của bạn trên HubStay.
+                Tìm phòng, tìm bạn ở ghép hoặc đăng chỗ ở của bạn trên HubStay.
               </p>
 
               {/* Features */}
@@ -152,13 +219,9 @@ export default function RegisterPage() {
         ===================================================== */}
         <section className="h-full min-w-0 flex-1 overflow-y-auto bg-white">
           <div className="mx-auto w-full max-w-[720px] px-7 py-10 sm:px-10 lg:px-12">
-
             {/* Mobile logo */}
             <div className="mb-8 flex items-center justify-between lg:hidden">
-              <Link
-                href="/"
-                className="flex items-center gap-2.5"
-              >
+              <Link href="/" className="flex items-center gap-2.5">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#2d5af5] text-white">
                   <Home className="h-5 w-5" />
                 </div>
@@ -193,165 +256,204 @@ export default function RegisterPage() {
                 FORM DUY NHẤT
             ================================================= */}
             <form onSubmit={handleSubmit}>
-              {error ? <p role="alert" className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p> : null}
-              {success ? <p role="status" className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{success}{" "}<Link href="/login" className="font-semibold underline">Đăng nhập</Link></p> : null}
+              {error ? (
+                <p
+                  role="alert"
+                  className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700"
+                >
+                  {error}
+                </p>
+              ) : null}
+              {success ? (
+                <p
+                  role="status"
+                  className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700"
+                >
+                  {success}
+                  {!otpPending ? (
+                    <>
+                      {" "}
+                      <Link href="/login" className="font-semibold underline">
+                        Đăng nhập
+                      </Link>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+              <fieldset disabled={otpPending} className="contents">
+                {/* Họ tên + SĐT */}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    id="fullName"
+                    name="fullName"
+                    label="Họ và tên"
+                    icon={<UserRound className="h-[17px] w-[17px]" />}
+                    placeholder="Nguyễn Văn A"
+                    autoComplete="name"
+                  />
 
-              {/* Họ tên + SĐT */}
-              <div className="grid gap-4 sm:grid-cols-2">
+                  <Field
+                    id="phone"
+                    name="phone"
+                    label="Số điện thoại (không bắt buộc)"
+                    icon={<Phone className="h-[17px] w-[17px]" />}
+                    placeholder="09xxxxxxxx"
+                    type="tel"
+                    autoComplete="tel"
+                    required={false}
+                  />
+                </div>
 
-                <Field
-                  id="fullName"
-                  name="fullName"
-                  label="Họ và tên"
-                  icon={<UserRound className="h-[17px] w-[17px]" />}
-                  placeholder="Nguyễn Văn A"
-                  autoComplete="name"
-                />
-
-                <Field
-                  id="phone"
-                  name="phone"
-                  label="Số điện thoại (không bắt buộc)"
-                  icon={<Phone className="h-[17px] w-[17px]" />}
-                  placeholder="09xxxxxxxx"
-                  type="tel"
-                  autoComplete="tel"
-                  required={false}
-                />
-
-              </div>
-
-              {/* Email */}
-              <div className="mt-4">
-                <Field
-                  id="email"
-                  name="email"
-                  label="Email"
-                  icon={<Mail className="h-[17px] w-[17px]" />}
-                  placeholder="example@gmail.com"
-                  type="email"
-                  autoComplete="email"
-                />
-              </div>
-              {/* =================================================
+                {/* Email */}
+                <div className="mt-4">
+                  <Field
+                    id="email"
+                    name="email"
+                    label="Email"
+                    icon={<Mail className="h-[17px] w-[17px]" />}
+                    placeholder="example@gmail.com"
+                    type="email"
+                    autoComplete="email"
+                  />
+                </div>
+                {/* =================================================
                   VAI TRÒ
               ================================================= */}
-              <div className="mt-5">
+                <div className="mt-5">
+                  <label className="mb-2.5 block text-[13px] font-medium text-slate-700">
+                    Bạn tham gia với tư cách{" "}
+                    <span className="text-rose-600">*</span>
+                  </label>
 
-                <label className="mb-2.5 block text-[13px] font-medium text-slate-700">
-                  Bạn tham gia với tư cách <span className="text-rose-600">*</span>
-                </label>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <RoleCard
+                      selected={role === "STUDENT"}
+                      onClick={() => setRole("STUDENT")}
+                      icon={<GraduationCap className="h-5 w-5" />}
+                      title="Sinh viên"
+                      description="Tìm phòng"
+                    />
 
-                <div className="grid gap-3 sm:grid-cols-3">
+                    <RoleCard
+                      selected={role === "WORKER"}
+                      onClick={() => setRole("WORKER")}
+                      icon={<BriefcaseBusiness className="h-5 w-5" />}
+                      title="Người đi làm"
+                      description="Tìm chỗ ở"
+                    />
 
-                  <RoleCard
-                    selected={role === "STUDENT"}
-                    onClick={() => setRole("STUDENT")}
-                    icon={<GraduationCap className="h-5 w-5" />}
-                    title="Sinh viên"
-                    description="Tìm phòng"
-                  />
-
-                  <RoleCard
-                    selected={role === "WORKER"}
-                    onClick={() => setRole("WORKER")}
-                    icon={<BriefcaseBusiness className="h-5 w-5" />}
-                    title="Người đi làm"
-                    description="Tìm chỗ ở"
-                  />
-
-                  <RoleCard
-                    selected={role === "LANDLORD"}
-                    onClick={() => setRole("LANDLORD")}
-                    icon={<Home className="h-5 w-5" />}
-                    title="Chủ trọ"
-                    description="Đăng phòng"
-                  />
-
+                    <RoleCard
+                      selected={role === "LANDLORD"}
+                      onClick={() => setRole("LANDLORD")}
+                      icon={<Home className="h-5 w-5" />}
+                      title="Chủ trọ"
+                      description="Đăng phòng"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              {/* =================================================
+                {/* =================================================
                   MẬT KHẨU
               ================================================= */}
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                  <PasswordField
+                    id="password"
+                    name="password"
+                    label="Mật khẩu"
+                    placeholder="Ít nhất 8 ký tự"
+                    showPassword={showPassword}
+                    onToggle={() => setShowPassword((value) => !value)}
+                  />
 
-                <PasswordField
-                  id="password"
-                  name="password"
-                  label="Mật khẩu"
-                  placeholder="Ít nhất 8 ký tự"
-                  showPassword={showPassword}
-                  onToggle={() =>
-                    setShowPassword((value) => !value)
-                  }
-                />
+                  <PasswordField
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    label="Xác nhận mật khẩu"
+                    placeholder="Nhập lại mật khẩu"
+                    showPassword={showConfirmPassword}
+                    onToggle={() => setShowConfirmPassword((value) => !value)}
+                  />
+                </div>
 
-                <PasswordField
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  label="Xác nhận mật khẩu"
-                  placeholder="Nhập lại mật khẩu"
-                  showPassword={showConfirmPassword}
-                  onToggle={() =>
-                    setShowConfirmPassword((value) => !value)
-                  }
-                />
+                {/* Gợi ý mật khẩu */}
+                <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <Check className="h-3.5 w-3.5 text-[#2d5af5]" />
+                  Ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc
+                  biệt.
+                </div>
 
-              </div>
-
-              {/* Gợi ý mật khẩu */}
-              <div className="mt-2 flex items-center gap-1.5 text-[11px] text-slate-400">
-                <Check className="h-3.5 w-3.5 text-[#2d5af5]" />
-                Mật khẩu tối thiểu 8 ký tự.
-              </div>
-
-              {/* =================================================
+                {/* =================================================
                   XÁC MINH
               ================================================= */}
-              <div className="mt-5 rounded-xl bg-blue-50/70 px-4 py-3">
-                <p className="text-xs leading-5 text-blue-700">
-                  <span className="font-semibold">
-                    Xác minh tài khoản:
-                  </span>{" "}
-                  Bạn có thể xác minh sau khi đăng ký trong
-                  phần Tài khoản.
-                </p>
-              </div>
+                <div className="mt-5 rounded-xl bg-blue-50/70 px-4 py-3">
+                  <p className="text-xs leading-5 text-blue-700">
+                    <span className="font-semibold">Xác minh tài khoản:</span>{" "}
+                    Bạn có thể xác minh sau khi đăng ký trong phần Tài khoản.
+                  </p>
+                </div>
 
-              {/* =================================================
+                {/* =================================================
                   TERMS
               ================================================= */}
-              <label className="mt-5 flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={agreeTerms}
-                  onChange={(event) =>
-                    setAgreeTerms(event.target.checked)
-                  }
-                  required
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-[#2d5af5]"
-                />
+                <label className="mt-5 flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={agreeTerms}
+                    onChange={(event) => setAgreeTerms(event.target.checked)}
+                    required
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-[#2d5af5]"
+                  />
 
-                <span className="text-xs leading-5 text-slate-500">
-                  <span className="text-rose-600">*</span>{" "}
-                  Tôi đồng ý với{" "}
-                  <Link
-                    href="#"
-                    className="font-medium text-[#2d5af5] hover:underline"
+                  <span className="text-xs leading-5 text-slate-500">
+                    <span className="text-rose-600">*</span> Tôi đồng ý với{" "}
+                    <Link
+                      href="#"
+                      className="font-medium text-[#2d5af5] hover:underline"
+                    >
+                      Điều khoản sử dụng
+                    </Link>{" "}
+                    và{" "}
+                    <Link
+                      href="#"
+                      className="font-medium text-[#2d5af5] hover:underline"
+                    >
+                      Chính sách bảo mật
+                    </Link>
+                    .
+                  </span>
+                </label>
+              </fieldset>
+
+              {otpPending ? (
+                <div className="mt-5">
+                  <label
+                    htmlFor="otp"
+                    className="mb-1.5 block text-[13px] font-medium text-slate-700"
                   >
-                    Điều khoản sử dụng
-                  </Link>{" "}
-                  và{" "}
-                  <Link
-                    href="#"
-                    className="font-medium text-[#2d5af5] hover:underline"
+                    Mã OTP gửi đến {pendingEmail}
+                  </label>
+                  <input
+                    id="otp"
+                    name="otp"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    required
+                    className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm tracking-[0.3em]"
+                    placeholder="000000"
+                  />
+                  <button
+                    type="button"
+                    onClick={resendOtp}
+                    disabled={isSubmitting || resendSeconds > 0}
+                    className="mt-2 text-sm font-medium text-[#2d5af5] disabled:text-slate-400"
                   >
-                    Chính sách bảo mật
-                  </Link>
-                  .
-                </span>
-              </label>
+                    {resendSeconds > 0
+                      ? `Gửi lại mã sau ${resendSeconds} giây`
+                      : "Gửi lại mã OTP"}
+                  </button>
+                </div>
+              ) : null}
 
               {/* =================================================
                   SUBMIT
@@ -361,7 +463,13 @@ export default function RegisterPage() {
                 disabled={isSubmitting}
                 className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#2d5af5] text-sm font-semibold text-white transition hover:bg-[#244bd1] disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isSubmitting ? "Đang tạo tài khoản..." : "Tạo tài khoản"}
+                {isSubmitting
+                  ? otpPending
+                    ? "Đang xác thực..."
+                    : "Đang gửi mã OTP..."
+                  : otpPending
+                    ? "Xác nhận OTP"
+                    : "Gửi mã xác thực"}
                 <ArrowRight className="h-4 w-4" />
               </button>
 
@@ -375,7 +483,6 @@ export default function RegisterPage() {
                   Đăng nhập
                 </Link>
               </p>
-
             </form>
           </div>
         </section>
@@ -413,7 +520,13 @@ function Field({
         htmlFor={id}
         className="mb-1.5 block text-[13px] font-medium text-slate-700"
       >
-        {label}{required ? <> <span className="text-rose-600">*</span></> : null}
+        {label}
+        {required ? (
+          <>
+            {" "}
+            <span className="text-rose-600">*</span>
+          </>
+        ) : null}
       </label>
 
       <div className="relative">
@@ -480,9 +593,7 @@ function PasswordField({
         <button
           type="button"
           onClick={onToggle}
-          aria-label={
-            showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"
-          }
+          aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
           className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
         >
           {showPassword ? (
@@ -516,13 +627,9 @@ function Feature({
       </div>
 
       <div>
-        <p className="text-[14px] font-semibold">
-          {title}
-        </p>
+        <p className="text-[14px] font-semibold">{title}</p>
 
-        <p className="mt-0.5 text-[12px] text-blue-100">
-          {description}
-        </p>
+        <p className="mt-0.5 text-[12px] text-blue-100">{description}</p>
       </div>
     </div>
   );

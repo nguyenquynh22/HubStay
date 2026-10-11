@@ -1,4 +1,5 @@
 ﻿const db = require("../common/db");
+const { getKycSubmissionBlock } = require("../lib/kyc-submission-policy");
 
 class verification_requestsRepository {
   static async getAll() {
@@ -36,6 +37,56 @@ class verification_requestsRepository {
     return { request_id: result.insertId, ...payload };
   }
 
+  static async createIfAllowed(data) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [users] = await connection.query(
+        "SELECT user_id, is_verified FROM users WHERE user_id = ? FOR UPDATE",
+        [data.user_id],
+      );
+      if (!users[0]) {
+        await connection.rollback();
+        return { error: "USER_NOT_FOUND" };
+      }
+      const [requests] = await connection.query(
+        "SELECT status FROM verification_requests WHERE user_id = ? ORDER BY created_at DESC, request_id DESC LIMIT 1 FOR UPDATE",
+        [data.user_id],
+      );
+      const block = getKycSubmissionBlock(
+        users[0].is_verified,
+        requests[0]?.status,
+      );
+      if (block) {
+        await connection.rollback();
+        return { error: block };
+      }
+
+      const payload = {
+        ...data,
+        status: "PENDING",
+        created_at: new Date(),
+      };
+      const [result] = await connection.query(
+        "INSERT INTO verification_requests SET ?",
+        [payload],
+      );
+      await connection.query(
+        "UPDATE users SET kyc_status = 'PENDING' WHERE user_id = ?",
+        [data.user_id],
+      );
+      await connection.commit();
+      return {
+        data: { request_id: result.insertId, ...payload },
+      };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   static async update(id, data) {
     await db.query("UPDATE verification_requests SET ? WHERE request_id = ?", [
       data,
@@ -48,6 +99,18 @@ class verification_requestsRepository {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
+      const [owners] = await connection.query(
+        "SELECT user_id FROM verification_requests WHERE request_id = ?",
+        [id],
+      );
+      if (!owners[0]) {
+        await connection.rollback();
+        return { error: "REQUEST_NOT_FOUND" };
+      }
+      await connection.query(
+        "SELECT user_id FROM users WHERE user_id = ? FOR UPDATE",
+        [owners[0].user_id],
+      );
       const [rows] = await connection.query(
         "SELECT request_id, user_id, status FROM verification_requests WHERE request_id = ? FOR UPDATE",
         [id],

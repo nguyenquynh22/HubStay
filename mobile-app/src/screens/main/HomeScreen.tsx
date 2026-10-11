@@ -59,8 +59,15 @@ export default function HomeScreen({
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    total: 0,
+    hasMore: false,
+    limit: 5,
+  });
 
   const areaTerms = useMemo(
     () =>
@@ -88,11 +95,17 @@ export default function HomeScreen({
 
   useEffect(() => {
     let active = true;
-    Promise.all([getLandmarks(), searchPosts({})])
+    Promise.all([getLandmarks(), searchPosts({ page: 1, limit: 5 })])
       .then(([landmarkResponse, postResponse]) => {
         if (!active) return;
         setLandmarks(landmarkResponse.data || []);
         setPosts(postResponse.data || []);
+        setPagination({
+          page: postResponse.pagination?.page || 1,
+          total: postResponse.pagination?.total || 0,
+          hasMore: Number(postResponse.pagination?.hasMore) === 1,
+          limit: postResponse.pagination?.limit || 5,
+        });
       })
       .catch(() => {
         if (active)
@@ -172,6 +185,7 @@ export default function HomeScreen({
     }
     setSearching(true);
     setError("");
+    setPagination({ page: 1, total: 0, hasMore: false, limit: 5 });
     try {
       const response = await searchPosts({
         ...(area.province ? { province_code: area.province.code } : {}),
@@ -183,8 +197,16 @@ export default function HomeScreen({
               radius_km: radiusKm ?? "all",
             }
           : {}),
+        page: 1,
+        limit: 5,
       });
       setPosts(response.data || []);
+      setPagination({
+        page: response.pagination?.page || 1,
+        total: response.pagination?.total || 0,
+        hasMore: !!response.pagination?.hasMore,
+        limit: response.pagination?.limit || 5,
+      });
     } catch (requestError: any) {
       setError(
         requestError?.response?.data?.message ||
@@ -192,6 +214,41 @@ export default function HomeScreen({
       );
     } finally {
       setSearching(false);
+    }
+  };
+
+  const loadMorePosts = async () => {
+    if (!pagination.hasMore || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const response = await searchPosts({
+        ...(area.province ? { province_code: area.province.code } : {}),
+        ...(area.district ? { district_code: area.district.code } : {}),
+        ...(area.ward ? { ward_code: area.ward.code } : {}),
+        ...(landmark
+          ? {
+              landmark_id: Number(landmark.landmark_id),
+              radius_km: radiusKm ?? "all",
+            }
+          : {}),
+        page: pagination.page + 1,
+        limit: pagination.limit,
+      });
+      const nextPosts = response.data || [];
+      setPosts((currentPosts) => [...currentPosts, ...nextPosts]);
+      setPagination({
+        page: response.pagination?.page || pagination.page + 1,
+        total: response.pagination?.total || 0,
+        hasMore: !!response.pagination?.hasMore,
+        limit: response.pagination?.limit || pagination.limit,
+      });
+    } catch (requestError: any) {
+      setError(
+        requestError?.response?.data?.message ||
+          "Không tải được tiếp dữ liệu. Kiểm tra kết nối máy chủ.",
+      );
+    } finally {
+      setLoadingMore(false);
     }
   };
 
@@ -359,6 +416,23 @@ export default function HomeScreen({
                         : "Chưa có bài đăng phù hợp. Hãy chọn khu vực hoặc địa điểm để lọc.")}
             </Text>
           }
+          onEndReached={loadMorePosts}
+          onEndReachedThreshold={0.4}
+          ListFooterComponent={
+            pagination.hasMore ? (
+              <TouchableOpacity
+                style={styles.loadMore}
+                onPress={loadMorePosts}
+                disabled={loadingMore}
+              >
+                {loadingMore ? (
+                  <ActivityIndicator color="#00685f" />
+                ) : (
+                  <Text style={styles.loadMoreText}>Xem thêm</Text>
+                )}
+              </TouchableOpacity>
+            ) : null
+          }
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.card}
@@ -506,6 +580,15 @@ const styles = StyleSheet.create({
   searchButtonText: { color: "#ffffff", fontWeight: "700", fontSize: 14 },
   error: { color: "#a23b33", fontSize: 12, marginTop: 8 },
   list: { padding: 14 },
+  loadMore: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    marginBottom: 8,
+    borderRadius: 10,
+    backgroundColor: "#e7f5f2",
+  },
+  loadMoreText: { color: "#00685f", fontWeight: "700" },
   card: {
     backgroundColor: "white",
     borderRadius: 14,

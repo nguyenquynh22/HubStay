@@ -39,6 +39,14 @@ class NotificationsRepository {
       [userId],
     );
   }
+
+  static async deleteAll(userId) {
+    const [result] = await db.query(
+      "DELETE FROM notifications WHERE user_id = ?",
+      [userId],
+    );
+    return result.affectedRows;
+  }
 }
 
 module.exports = NotificationsRepository;

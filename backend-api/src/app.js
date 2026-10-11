@@ -10,12 +10,14 @@ const { Server } = require("socket.io");
 
 const db = require("./common/db"); // MySQL TiDB
 const mongoDb = require("./common/mongo"); // MongoDB Chat
+const { setSocketServer } = require("./common/socket-server");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: "*", methods: ["GET", "POST"] },
 });
+setSocketServer(io);
 
 // Kết nối MongoDB
 mongoDb();

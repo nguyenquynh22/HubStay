@@ -1,6 +1,7 @@
 const Repo = require("../repositories/rental_requests.repository");
 const Conversation = require("../models/conversation.model");
 const Notifications = require("../services/notifications.service");
+const { getSocketServer } = require("../common/socket-server");
 
 const parseId = (value) => {
   const id = Number(value);
@@ -14,11 +15,25 @@ const respondToError = (res, error) => {
     FORBIDDEN: [403, "Bạn không có quyền thực hiện thao tác này"],
     OWN_POST: [403, "Bạn không thể gửi yêu cầu thuê bài của chính mình"],
     POST_UNAVAILABLE: [409, "Bài đăng không còn khả dụng"],
+    POST_NOT_RENTED: [409, "Bài đăng chưa ở trạng thái đã cho thuê"],
     REQUEST_EXISTS: [409, "Bạn đã có yêu cầu thuê đang chờ xử lý"],
     REQUEST_NOT_PENDING: [409, "Yêu cầu không còn ở trạng thái chờ xử lý"],
   };
   const [status, message] = responses[error] || [400, "Yêu cầu không hợp lệ"];
   return res.status(status).json({ success: false, message });
+};
+
+const publishPostStatus = async (postId, status) => {
+  const conversations = await Conversation.find({ post_id: postId })
+    .select("_id")
+    .lean();
+  const io = getSocketServer();
+  for (const conversation of conversations) {
+    io?.to(String(conversation._id)).emit("post_status_changed", {
+      post_id: postId,
+      status,
+    });
+  }
 };
 
 module.exports = {
@@ -128,10 +143,7 @@ module.exports = {
       const result = await Repo.transitionStatus(requestId, actorId, status);
       if (result.error) return respondToError(res, result.error);
       if (status === "ACCEPTED") {
-        await Conversation.updateMany(
-          { post_id: result.post_id, is_closed: false },
-          { $set: { is_closed: true, close_reason: "Bài đăng đã cho thuê" } },
-        );
+        await publishPostStatus(result.post_id, "RENTED");
       }
 
       if (status === "ACCEPTED" || status === "REJECTED") {
@@ -178,10 +190,7 @@ module.exports = {
       }
       const result = await Repo.markPostRented(postId, actorId);
       if (result.error) return respondToError(res, result.error);
-      await Conversation.updateMany(
-        { post_id: postId, is_closed: false },
-        { $set: { is_closed: true, close_reason: "Bài đăng đã cho thuê" } },
-      );
+      await publishPostStatus(postId, "RENTED");
       for (const tenantId of result.rejected_tenant_ids || []) {
         await Notifications.notify(
           tenantId,
@@ -194,6 +203,33 @@ module.exports = {
       res.json({
         success: true,
         message: "Đã đánh dấu bài đăng cho thuê thành công",
+        data: result,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  reopenPost: async (req, res, next) => {
+    try {
+      const postId = parseId(req.params.postId);
+      const actorId = parseId(req.body.actor_id);
+      if (!postId || !actorId) {
+        return res.status(400).json({
+          success: false,
+          message: "postId và actor_id hợp lệ là bắt buộc",
+        });
+      }
+      const result = await Repo.reopenPost(postId, actorId);
+      if (result.error) return respondToError(res, result.error);
+      await Conversation.updateMany(
+        { post_id: postId },
+        { $set: { is_closed: false, close_reason: "" } },
+      );
+      await publishPostStatus(postId, "AVAILABLE");
+      res.json({
+        success: true,
+        message: "Bài đăng đã được mở lại",
         data: result,
       });
     } catch (err) {

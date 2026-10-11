@@ -26,7 +26,7 @@ module.exports = {
 
   purchase: async (req, res, next) => {
     try {
-      const user_id = Number(req.body.user_id);
+      const user_id = res.locals.user.userId;
       const selectedPackage = (await getPackages()).find(
         (item) => item.package_name === req.body.package_name,
       );
@@ -53,7 +53,7 @@ module.exports = {
       if (result.error) {
         const errors = {
           USER_NOT_FOUND: [404, "Người dùng không tồn tại"],
-          LANDLORD_ONLY: [403, "Gói VIP dành cho chủ trọ"],
+          INVALID_ROLE: [403, "Vai trò không được phép đăng ký gói VIP."],
           KYC_REQUIRED: [403, "Bạn cần xác thực KYC trước khi mua gói VIP."],
           INSUFFICIENT_BALANCE: [409, "Số dư ví không đủ để mua gói VIP."],
         };
@@ -65,7 +65,11 @@ module.exports = {
           success: false,
           message,
           required_action:
-            result.error === "KYC_REQUIRED" ? "VERIFY_KYC" : undefined,
+            result.error === "KYC_REQUIRED"
+              ? "VERIFY_KYC"
+              : result.error === "INSUFFICIENT_BALANCE"
+                ? "TOP_UP"
+                : undefined,
         });
       }
       await Notifications.notify(
@@ -87,8 +91,10 @@ module.exports = {
 
   getAll: async (req, res, next) => {
     try {
-      const data = await Repo.getAll();
-      res.json({ success: true, data });
+      return res.status(403).json({
+        success: false,
+        message: "Không được phép xem đăng ký VIP của tài khoản khác.",
+      });
     } catch (err) {
       next(err);
     }
@@ -97,7 +103,7 @@ module.exports = {
   getById: async (req, res, next) => {
     try {
       const item = await Repo.getById(req.params.id);
-      if (!item)
+      if (!item || Number(item.user_id) !== res.locals.user.userId)
         return res
           .status(404)
           .json({ success: false, message: "Gói đăng ký không tồn tại" });
@@ -109,7 +115,13 @@ module.exports = {
 
   getByUser: async (req, res, next) => {
     try {
-      const data = await Repo.getByUserId(req.params.userId);
+      if (Number(req.params.userId) !== res.locals.user.userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ được xem lịch sử gói VIP của mình.",
+        });
+      }
+      const data = await Repo.getByUserId(res.locals.user.userId);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -130,7 +142,8 @@ module.exports = {
           success: false,
           message: "Kích hoạt VIP miễn phí chỉ có trong môi trường phát triển",
         });
-      const { user_id, package_name, months } = req.body;
+      const user_id = res.locals.user.userId;
+      const { package_name, months } = req.body;
       const duration = Number(months);
       if (!user_id || ![1, 12].includes(duration))
         return res
@@ -148,9 +161,10 @@ module.exports = {
           message: "Cần xác thực tài khoản trước khi đăng ký VIP",
         });
       if (user.role !== "LANDLORD")
-        return res
-          .status(403)
-          .json({ success: false, message: "Gói VIP dành cho chủ trọ" });
+        return res.status(403).json({
+          success: false,
+          message: "Gói VIP chỉ dành cho tài khoản chủ trọ.",
+        });
       const start = new Date();
       const end = new Date(start);
       end.setMonth(end.getMonth() + duration);
@@ -176,21 +190,10 @@ module.exports = {
 
   updateStatus: async (req, res, next) => {
     try {
-      const { status } = req.body;
-      const validStatuses = ["ACTIVE", "EXPIRED", "CANCELLED"];
-      if (!status || !validStatuses.includes(status)) {
-        return res
-          .status(400)
-          .json({ success: false, message: "Trạng thái không hợp lệ" });
-      }
-
-      const success = await Repo.updateStatus(req.params.id, status);
-      if (!success)
-        return res
-          .status(404)
-          .json({ success: false, message: "Gói đăng ký không tồn tại" });
-
-      res.json({ success: true, message: "Cập nhật trạng thái thành công" });
+      return res.status(403).json({
+        success: false,
+        message: "Trạng thái gói VIP chỉ được cập nhật qua quy trình quản trị.",
+      });
     } catch (err) {
       next(err);
     }

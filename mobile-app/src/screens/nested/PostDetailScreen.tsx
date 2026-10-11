@@ -16,8 +16,8 @@ import {
   toggleSavedPost,
   getSavedPosts,
   resolveImageUrl,
-  createRentalRequest,
   markPostRented,
+  reopenPost,
 } from "../../services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -124,7 +124,6 @@ export default function PostDetailScreen({
   const [roomStatus, setRoomStatus] = useState<"AVAILABLE" | "RENTED">(
     currentPost.status || "AVAILABLE",
   );
-  const [rentalRequestSent, setRentalRequestSent] = useState(false);
 
   // 3. Map View Toggle State
   const [showMap, setShowMap] = useState(false);
@@ -235,26 +234,6 @@ export default function PostDetailScreen({
     );
   };
 
-  const handleViewerConfirm = async () => {
-    if (roomStatus === "RENTED") return;
-    try {
-      await createRentalRequest({
-        post_id: Number(post.post_id),
-        tenant_id: userId,
-      });
-      setRentalRequestSent(true);
-      Alert.alert(
-        "Đã gửi yêu cầu thuê",
-        "Chủ trọ sẽ xem và phản hồi yêu cầu của bạn.",
-      );
-    } catch (error: any) {
-      Alert.alert(
-        "Không gửi được yêu cầu",
-        error?.response?.data?.message || "Vui lòng thử lại.",
-      );
-    }
-  };
-
   const handleHostConfirm = async () => {
     if (roomStatus === "RENTED") return;
     try {
@@ -267,6 +246,19 @@ export default function PostDetailScreen({
     } catch (error: any) {
       Alert.alert(
         "Không cập nhật được",
+        error?.response?.data?.message || "Vui lòng thử lại.",
+      );
+    }
+  };
+
+  const handleHostReopen = async () => {
+    try {
+      await reopenPost(Number(post.post_id), userId);
+      setRoomStatus("AVAILABLE");
+      Alert.alert("Đã mở lại bài đăng", "Người xem có thể nhắn tin trở lại.");
+    } catch (error: any) {
+      Alert.alert(
+        "Không mở lại được",
         error?.response?.data?.message || "Vui lòng thử lại.",
       );
     }
@@ -401,31 +393,26 @@ export default function PostDetailScreen({
             </View>
           )}
 
-          {roomStatus !== "RENTED" && (
+          {isOwnPost && (
             <View style={styles.confirmationCard}>
-              <Text style={styles.confirmTitle}>
-                {isOwnPost ? "Chốt trạng thái phòng" : "Gửi yêu cầu thuê"}
-              </Text>
+              <Text style={styles.confirmTitle}>Trạng thái bài đăng</Text>
               <View style={styles.confirmButtons}>
-                {isOwnPost ? (
+                {roomStatus === "RENTED" ? (
+                  <TouchableOpacity
+                    style={styles.confirmBtnSecondary}
+                    onPress={handleHostReopen}
+                  >
+                    <Text style={styles.confirmBtnSecondaryText}>
+                      Mở lại bài đăng
+                    </Text>
+                  </TouchableOpacity>
+                ) : (
                   <TouchableOpacity
                     style={styles.confirmBtnSecondary}
                     onPress={handleHostConfirm}
                   >
                     <Text style={styles.confirmBtnSecondaryText}>
-                      Xác nhận đã cho thuê
-                    </Text>
-                  </TouchableOpacity>
-                ) : (
-                  <TouchableOpacity
-                    disabled={rentalRequestSent}
-                    style={styles.confirmBtnPrimary}
-                    onPress={handleViewerConfirm}
-                  >
-                    <Text style={styles.confirmBtnText}>
-                      {rentalRequestSent
-                        ? "Đã gửi yêu cầu"
-                        : "Gửi yêu cầu thuê"}
+                      Xác nhận đã có người thuê
                     </Text>
                   </TouchableOpacity>
                 )}

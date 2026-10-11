@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,7 +11,11 @@ import {
   View,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
-import { registerAccount } from "../../services/api";
+import {
+  registerAccount,
+  resendRegistrationOtp,
+  verifyRegistrationOtp,
+} from "../../services/api";
 
 interface Props {
   onAuthenticated: (user: any, token: string) => void;
@@ -32,24 +36,83 @@ export default function RegisterScreen({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [otpPending, setOtpPending] = useState(false);
+  const [resendSeconds, setResendSeconds] = useState(0);
   const [role, setRole] = useState<(typeof roles)[number]["value"]>("STUDENT");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (resendSeconds <= 0) return;
+    const timer = setTimeout(
+      () => setResendSeconds((seconds) => seconds - 1),
+      1000,
+    );
+    return () => clearTimeout(timer);
+  }, [resendSeconds]);
+
   const submit = async () => {
+    if (otpPending && !/^\d{6}$/.test(otp.trim())) {
+      Alert.alert("Mã OTP không hợp lệ", "Vui lòng nhập đủ 6 chữ số.");
+      return;
+    }
+    if (
+      !otpPending &&
+      (password.length < 8 ||
+        password.length > 72 ||
+        !/[A-Z]/.test(password) ||
+        !/[a-z]/.test(password) ||
+        !/\d/.test(password) ||
+        !/[^A-Za-z0-9]/.test(password))
+    ) {
+      Alert.alert(
+        "Mật khẩu chưa đủ mạnh",
+        "Cần ít nhất 8 ký tự, gồm chữ hoa, chữ thường, số và ký tự đặc biệt.",
+      );
+      return;
+    }
+    if (!otpPending && password !== confirmPassword) {
+      Alert.alert("Mật khẩu không khớp", "Hãy nhập lại mật khẩu xác nhận.");
+      return;
+    }
     setLoading(true);
     try {
-      const response = await registerAccount({
-        full_name: fullName.trim(),
-        email: email.trim(),
-        phone: phone.trim() || undefined,
-        password,
-        role,
-      });
-      onAuthenticated(response.data.user, response.data.access_token);
+      if (otpPending) {
+        const response = await verifyRegistrationOtp(email.trim(), otp.trim());
+        onAuthenticated(response.data.user, response.data.access_token);
+      } else {
+        const response = await registerAccount({
+          full_name: fullName.trim(),
+          email: email.trim(),
+          phone: phone.trim() || undefined,
+          password,
+          role,
+        });
+        setOtpPending(true);
+        setResendSeconds(60);
+        Alert.alert("Đã gửi mã OTP", response.message);
+      }
     } catch (error: any) {
       Alert.alert(
         "Đăng ký thất bại",
+        error?.response?.data?.message || "Không kết nối được máy chủ.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    setLoading(true);
+    try {
+      const response = await resendRegistrationOtp(email.trim());
+      setResendSeconds(60);
+      Alert.alert("Đã gửi mã OTP", response.message);
+    } catch (error: any) {
+      Alert.alert(
+        "Không gửi được mã",
         error?.response?.data?.message || "Không kết nối được máy chủ.",
       );
     } finally {
@@ -73,6 +136,7 @@ export default function RegisterScreen({
           value={fullName}
           onChangeText={setFullName}
           autoComplete="name"
+          editable={!otpPending}
           placeholder="Nguyễn Văn An"
           style={styles.input}
         />
@@ -83,6 +147,7 @@ export default function RegisterScreen({
           autoCapitalize="none"
           keyboardType="email-address"
           autoComplete="email"
+          editable={!otpPending}
           placeholder="you@example.com"
           style={styles.input}
         />
@@ -92,6 +157,7 @@ export default function RegisterScreen({
           onChangeText={setPhone}
           keyboardType="phone-pad"
           autoComplete="tel"
+          editable={!otpPending}
           placeholder="09..."
           style={styles.input}
         />
@@ -100,6 +166,7 @@ export default function RegisterScreen({
           {roles.map((item) => (
             <TouchableOpacity
               key={item.value}
+              disabled={otpPending}
               onPress={() => setRole(item.value)}
               style={[styles.role, role === item.value && styles.roleSelected]}
             >
@@ -121,7 +188,9 @@ export default function RegisterScreen({
             onChangeText={setPassword}
             secureTextEntry={!showPassword}
             autoComplete="new-password"
-            placeholder="Ít nhất 8 ký tự"
+            editable={!otpPending}
+            maxLength={72}
+            placeholder="Ít nhất 8 ký tự đủ nhóm"
             style={styles.passwordInput}
           />
           <TouchableOpacity
@@ -137,21 +206,84 @@ export default function RegisterScreen({
             />
           </TouchableOpacity>
         </View>
+        {!otpPending ? (
+          <>
+            <Text style={styles.label}>NHẬP LẠI MẬT KHẨU</Text>
+            <TextInput
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
+              secureTextEntry
+              autoComplete="new-password"
+              maxLength={72}
+              placeholder="Nhập lại mật khẩu"
+              style={styles.input}
+            />
+          </>
+        ) : null}
+        {otpPending ? (
+          <>
+            <Text style={styles.label}>MÃ OTP GỬI ĐẾN {email.trim()}</Text>
+            <TextInput
+              value={otp}
+              onChangeText={(value) =>
+                setOtp(value.replace(/\D/g, "").slice(0, 6))
+              }
+              keyboardType="number-pad"
+              autoComplete="one-time-code"
+              maxLength={6}
+              placeholder="Nhập mã 6 chữ số"
+              style={styles.input}
+            />
+            <TouchableOpacity
+              disabled={loading || resendSeconds > 0}
+              onPress={resendOtp}
+              style={styles.resend}
+            >
+              <Text style={styles.switchStrong}>
+                {resendSeconds > 0
+                  ? `Gửi lại mã sau ${resendSeconds} giây`
+                  : "Gửi lại mã OTP"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
         <TouchableOpacity
           disabled={
-            loading || !fullName.trim() || !email.trim() || password.length < 8
+            loading ||
+            (otpPending
+              ? otp.trim().length !== 6
+              : !fullName.trim() ||
+                !email.trim() ||
+                password.length < 8 ||
+                password.length > 72 ||
+                !/[A-Z]/.test(password) ||
+                !/[a-z]/.test(password) ||
+                !/\d/.test(password) ||
+                !/[^A-Za-z0-9]/.test(password) ||
+                password !== confirmPassword)
           }
           onPress={submit}
           style={[
             styles.button,
-            (!fullName.trim() || !email.trim() || password.length < 8) &&
-              styles.disabled,
+            (otpPending
+              ? otp.trim().length !== 6
+              : !fullName.trim() ||
+                !email.trim() ||
+                password.length < 8 ||
+                password.length > 72 ||
+                !/[A-Z]/.test(password) ||
+                !/[a-z]/.test(password) ||
+                !/\d/.test(password) ||
+                !/[^A-Za-z0-9]/.test(password) ||
+                password !== confirmPassword) && styles.disabled,
           ]}
         >
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.buttonText}>Tạo tài khoản</Text>
+            <Text style={styles.buttonText}>
+              {otpPending ? "Xác nhận OTP" : "Gửi mã xác thực"}
+            </Text>
           )}
         </TouchableOpacity>
         <TouchableOpacity onPress={onSwitchToLogin} style={styles.switch}>
@@ -236,6 +368,7 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.55 },
   buttonText: { color: "white", fontWeight: "700" },
   switch: { alignItems: "center", marginTop: 18 },
+  resend: { alignSelf: "flex-start", paddingTop: 10 },
   switchText: { color: "#66736F" },
   switchStrong: { color: "#00685f", fontWeight: "700" },
 });

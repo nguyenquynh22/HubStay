@@ -8,6 +8,7 @@ router.get("/:id", controller.getById);
 router.get("/post/:postId", controller.getByPost);
 router.post("/", controller.create);
 router.post("/post/:postId/rent-out", controller.markPostRented);
+router.post("/post/:postId/reopen", controller.reopenPost);
 router.patch("/:id/status", controller.updateStatus);
 router.delete("/:id", controller.delete);
 

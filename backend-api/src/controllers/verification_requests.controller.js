@@ -2,10 +2,17 @@
 const UsersRepo = require("../repositories/users.repository");
 const Notifications = require("../services/notifications.service");
 const VerificationImages = require("../services/verification_images.service");
+const { getKycSubmissionBlock } = require("../lib/kyc-submission-policy");
 
 module.exports = {
   devVerify: async (req, res, next) => {
+    let newItem;
     try {
+      if (Number(req.params.userId) !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xác minh tài khoản khác.",
+        });
       if (process.env.NODE_ENV === "production")
         return res.status(403).json({
           success: false,
@@ -40,7 +47,10 @@ module.exports = {
       const data = await Repo.getAll();
       res.json({
         success: true,
-        data: data.map(({ front_card_url, back_card_url, selfie_image_url, ...item }) => item),
+        data: data.map(
+          ({ front_card_url, back_card_url, selfie_image_url, ...item }) =>
+            item,
+        ),
       });
     } catch (err) {
       next(err);
@@ -52,12 +62,8 @@ module.exports = {
       const item = await Repo.getById(req.params.id);
       if (!item)
         return res.status(404).json({ success: false, message: "Not found" });
-      const {
-        front_card_url,
-        back_card_url,
-        selfie_image_url,
-        ...publicItem
-      } = item;
+      const { front_card_url, back_card_url, selfie_image_url, ...publicItem } =
+        item;
       res.json({ success: true, data: publicItem });
     } catch (err) {
       next(err);
@@ -66,10 +72,19 @@ module.exports = {
 
   getByUser: async (req, res, next) => {
     try {
-      const data = await Repo.getByUserId(req.params.userId);
+      const userId = Number(req.params.userId);
+      if (userId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem hồ sơ KYC của tài khoản khác.",
+        });
+      const data = await Repo.getByUserId(userId);
       res.json({
         success: true,
-        data: data.map(({ front_card_url, back_card_url, selfie_image_url, ...item }) => item),
+        data: data.map(
+          ({ front_card_url, back_card_url, selfie_image_url, ...item }) =>
+            item,
+        ),
       });
     } catch (err) {
       next(err);
@@ -78,8 +93,13 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const user_id = Number(req.body.user_id);
+      const user_id = res.locals.user.userId;
       const account_type = req.body.account_type || "STUDENT";
+      if (req.body.user_id && Number(req.body.user_id) !== user_id)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể gửi yêu cầu KYC thay cho tài khoản khác.",
+        });
       if (
         !Number.isInteger(user_id) ||
         user_id < 1 ||
@@ -88,7 +108,8 @@ module.exports = {
       ) {
         return res.status(400).json({
           success: false,
-          message: "user_id, ảnh mặt trước giấy tờ và ảnh chân dung là bắt buộc",
+          message:
+            "user_id, ảnh mặt trước giấy tờ và ảnh chân dung là bắt buộc",
         });
       }
       if (!["STUDENT", "WORKER", "LANDLORD"].includes(account_type)) {
@@ -102,42 +123,77 @@ module.exports = {
         return res
           .status(404)
           .json({ success: false, message: "Người dùng không tồn tại" });
-      if (Number(user.is_verified) === 1)
-        return res
-          .status(409)
-          .json({ success: false, message: "Tài khoản đã được xác minh" });
       const requests = await Repo.getByUserId(user_id);
-      if (requests.some((request) => request.status === "PENDING")) {
+      const block = getKycSubmissionBlock(
+        user.is_verified,
+        requests[0]?.status,
+      );
+      if (block === "VERIFIED")
+        return res.status(409).json({
+          success: false,
+          message: "Tài khoản đã được xác minh",
+        });
+      if (block === "PENDING")
         return res.status(409).json({
           success: false,
           message: "Bạn đã có yêu cầu KYC đang chờ xử lý",
         });
-      }
+      if (block)
+        return res.status(409).json({
+          success: false,
+          message: "Yêu cầu KYC trước đó chưa thể gửi lại",
+        });
 
       const storedImages = [];
-      let newItem;
       try {
-        const frontImage = await VerificationImages.storeImage(req.body.front_image);
-        storedImages.push(frontImage.filename);
-        const backImage = req.body.back_image
+        const frontImageUrl = await VerificationImages.storeImage(
+          req.body.front_image,
+        );
+        storedImages.push(frontImageUrl);
+        const backImageUrl = req.body.back_image
           ? await VerificationImages.storeImage(req.body.back_image)
           : null;
-        if (backImage) storedImages.push(backImage.filename);
-        const selfieImage = await VerificationImages.storeImage(req.body.selfie_image);
-        storedImages.push(selfieImage.filename);
-        newItem = await Repo.create({
+        if (backImageUrl) storedImages.push(backImageUrl);
+        const selfieImageUrl = await VerificationImages.storeImage(
+          req.body.selfie_image,
+        );
+        storedImages.push(selfieImageUrl);
+        const created = await Repo.createIfAllowed({
           user_id,
           account_type: account_type || "STUDENT",
-          front_card_url: frontImage.filename,
-          back_card_url: backImage?.filename || null,
-          selfie_image_url: selfieImage.filename,
-          status: "PENDING",
+          front_card_url: frontImageUrl,
+          back_card_url: backImageUrl || null,
+          selfie_image_url: selfieImageUrl,
         });
+        if (created.error) {
+          await Promise.allSettled(
+            storedImages.map((imageUrl) =>
+              VerificationImages.removeImage(imageUrl),
+            ),
+          );
+          const message =
+            {
+              USER_NOT_FOUND: "Người dùng không tồn tại",
+              VERIFIED: "Tài khoản đã được xác minh",
+              PENDING: "Bạn đã có yêu cầu KYC đang chờ xử lý",
+            }[created.error] || "Yêu cầu KYC trước đó chưa thể gửi lại";
+          return res
+            .status(created.error === "USER_NOT_FOUND" ? 404 : 409)
+            .json({
+              success: false,
+              message,
+            });
+        }
+        newItem = created.data;
+        storedImages.length = 0;
       } catch (error) {
-        await Promise.all(storedImages.map((filename) => VerificationImages.removeImage(filename)));
+        await Promise.allSettled(
+          storedImages.map((imageUrl) =>
+            VerificationImages.removeImage(imageUrl),
+          ),
+        );
         throw error;
       }
-      await UsersRepo.update(user_id, { kyc_status: "PENDING" });
       const {
         front_card_url,
         back_card_url,

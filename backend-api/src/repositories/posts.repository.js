@@ -1,4 +1,8 @@
 ﻿const db = require("../common/db");
+const {
+  sortRecommendedPosts,
+  getHomePageLimit,
+} = require("../lib/home-recommendations");
 
 const fs = require("fs/promises");
 const path = require("path");
@@ -262,6 +266,8 @@ class postsRepository {
     wardCode,
     landmarkId,
     radiusKm = 10,
+    page = 1,
+    limit = getHomePageLimit(),
   } = {}) {
     const conditions = ["p.status = 'AVAILABLE'", "p.is_approved = 1"];
     const values = [];
@@ -322,16 +328,23 @@ class postsRepository {
           .map(({ exact_distance_km, ...post }) => post)
       : rows;
 
-    return results.sort((a, b) => {
-      if (Number(b.is_vip_active) !== Number(a.is_vip_active)) {
-        return Number(b.is_vip_active) - Number(a.is_vip_active);
-      }
-      if (Number(b.is_verified_active) !== Number(a.is_verified_active)) {
-        return Number(b.is_verified_active) - Number(a.is_verified_active);
-      }
-      if (landmark) return a.distance_km - b.distance_km;
-      return new Date(b.created_at) - new Date(a.created_at);
+    const orderedResults = sortRecommendedPosts(results, {
+      userArea: landmark ? null : null,
     });
+    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+    const pageSize = Math.min(
+      Math.max(1, Number.parseInt(limit, 10) || getHomePageLimit()),
+      50,
+    );
+    const offset = (pageNumber - 1) * pageSize;
+
+    return {
+      items: orderedResults.slice(offset, offset + pageSize),
+      page: pageNumber,
+      limit: pageSize,
+      total: orderedResults.length,
+      hasMore: offset + pageSize < orderedResults.length,
+    };
   }
 
   static async getDistanceToPost({ postId, landmarkId }) {

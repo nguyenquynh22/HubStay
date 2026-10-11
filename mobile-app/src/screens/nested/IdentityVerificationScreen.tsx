@@ -67,7 +67,9 @@ export default function IdentityVerificationScreen({
       !selfieImage
     ) {
       const missingFields = [
-        !Number.isInteger(userId) || userId < 1 ? "tài khoản đăng nhập hợp lệ" : "",
+        !Number.isInteger(userId) || userId < 1
+          ? "tài khoản đăng nhập hợp lệ"
+          : "",
         !accountTypes.includes(accountType) ? "loại tài khoản" : "",
         !frontImage ? "ảnh mặt trước giấy tờ" : "",
         !selfieImage ? "ảnh chân dung" : "",
@@ -92,7 +94,10 @@ export default function IdentityVerificationScreen({
       try {
         await refresh();
       } catch (refreshError) {
-        console.error("[KYC] Gửi hồ sơ thành công nhưng không tải lại được trạng thái.", refreshError);
+        console.error(
+          "[KYC] Gửi hồ sơ thành công nhưng không tải lại được trạng thái.",
+          refreshError,
+        );
         setSubmitFeedback({
           kind: "success",
           message: `${successMessage} Không tải lại được trạng thái; hãy mở lại màn hình sau.`,
@@ -118,10 +123,7 @@ export default function IdentityVerificationScreen({
         JSON.stringify(error?.response?.data ?? null),
       );
       setSubmitFeedback({ kind: "error", message });
-      Alert.alert(
-        "Không gửi được",
-        message,
-      );
+      Alert.alert("Không gửi được", message);
     } finally {
       setSubmitting(false);
     }
@@ -137,7 +139,10 @@ export default function IdentityVerificationScreen({
       if (source === "camera") {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert("Cần quyền camera", "Cho phép camera để chụp ảnh xác minh.");
+          Alert.alert(
+            "Cần quyền camera",
+            "Cho phép camera để chụp ảnh xác minh.",
+          );
           return;
         }
         result = await ImagePicker.launchCameraAsync({
@@ -149,9 +154,13 @@ export default function IdentityVerificationScreen({
           base64: true,
         });
       } else {
-        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        const permission =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert("Cần quyền thư viện ảnh", "Cho phép truy cập ảnh để chọn giấy tờ xác minh.");
+          Alert.alert(
+            "Cần quyền thư viện ảnh",
+            "Cho phép truy cập ảnh để chọn giấy tờ xác minh.",
+          );
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
@@ -161,7 +170,8 @@ export default function IdentityVerificationScreen({
           quality: 0.65,
           base64: true,
           preferredAssetRepresentationMode:
-            ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Compatible,
+            ImagePicker.UIImagePickerPreferredAssetRepresentationMode
+              .Compatible,
         });
       }
       if (result.canceled) return;
@@ -171,12 +181,18 @@ export default function IdentityVerificationScreen({
         return;
       }
       if (asset.base64.length * 0.75 > 5 * 1024 * 1024) {
-        Alert.alert("Ảnh quá lớn", "Mỗi ảnh phải nhỏ hơn 5 MB. Hãy chọn hoặc chụp lại.");
+        Alert.alert(
+          "Ảnh quá lớn",
+          "Mỗi ảnh phải nhỏ hơn 5 MB. Hãy chọn hoặc chụp lại.",
+        );
         return;
       }
       const mimeType = asset.mimeType || "image/jpeg";
       if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
-        Alert.alert("Định dạng không hỗ trợ", "Ảnh cần ở định dạng JPG, PNG hoặc WebP.");
+        Alert.alert(
+          "Định dạng không hỗ trợ",
+          "Ảnh cần ở định dạng JPG, PNG hoặc WebP.",
+        );
         return;
       }
       setImage({
@@ -185,7 +201,9 @@ export default function IdentityVerificationScreen({
       });
     } catch {
       Alert.alert(
-        source === "camera" ? "Không mở được camera" : "Không mở được thư viện ảnh",
+        source === "camera"
+          ? "Không mở được camera"
+          : "Không mở được thư viện ảnh",
         "Hãy thử lại sau.",
       );
     }
@@ -215,8 +233,12 @@ export default function IdentityVerificationScreen({
           <View style={styles.status}>
             <Text style={styles.statusLabel}>TRẠNG THÁI</Text>
             <Text style={styles.statusValue}>{statusLabel}</Text>
-            {request?.reviewer_note ? (
-              <Text style={styles.note}>{request.reviewer_note}</Text>
+            {request?.status === "REJECTED" &&
+            (request?.rejection_reason || request?.reviewer_note) ? (
+              <Text style={styles.note}>
+                Lý do từ chối:{" "}
+                {request.rejection_reason || request.reviewer_note}
+              </Text>
             ) : null}
           </View>
           {submitFeedback ? (
@@ -275,10 +297,15 @@ export default function IdentityVerificationScreen({
                 ))}
               </View>
               <Text style={styles.section}>GIẤY TỜ XÁC MINH</Text>
-              <Text style={styles.note}>Mặt trước bắt buộc; mặt sau không bắt buộc.</Text>
+              <Text style={styles.note}>
+                Mặt trước bắt buộc; mặt sau không bắt buộc.
+              </Text>
               <Text style={styles.imageLabel}>Mặt trước (bắt buộc)</Text>
               {frontImage ? (
-                <Image source={{ uri: frontImage.previewUri }} style={styles.documentPreview} />
+                <Image
+                  source={{ uri: frontImage.previewUri }}
+                  style={styles.documentPreview}
+                />
               ) : null}
               <View style={styles.imageActions}>
                 <TouchableOpacity
@@ -298,7 +325,10 @@ export default function IdentityVerificationScreen({
               </View>
               <Text style={styles.imageLabel}>Mặt sau (không bắt buộc)</Text>
               {backImage ? (
-                <Image source={{ uri: backImage.previewUri }} style={styles.documentPreview} />
+                <Image
+                  source={{ uri: backImage.previewUri }}
+                  style={styles.documentPreview}
+                />
               ) : null}
               <View style={styles.imageActions}>
                 <TouchableOpacity
@@ -327,27 +357,30 @@ export default function IdentityVerificationScreen({
               </View>
               <Text style={styles.section}>ẢNH CHÂN DUNG XÁC MINH</Text>
               <Text style={styles.note}>
-                Chụp trực tiếp bằng camera trước, chỉ một người, nhìn thẳng vào camera và đủ sáng.
+                Chụp trực tiếp bằng camera trước, chỉ một người, nhìn thẳng vào
+                camera và đủ sáng.
               </Text>
               {selfieImage ? (
-                <Image source={{ uri: selfieImage.previewUri }} style={styles.selfiePreview} />
+                <Image
+                  source={{ uri: selfieImage.previewUri }}
+                  style={styles.selfiePreview}
+                />
               ) : null}
               <View style={styles.imageActions}>
                 <TouchableOpacity
                   disabled={submitting}
-                  onPress={() => void pickKycImage(setSelfieImage, "camera", ImagePicker.CameraType.front)}
+                  onPress={() =>
+                    void pickKycImage(
+                      setSelfieImage,
+                      "camera",
+                      ImagePicker.CameraType.front,
+                    )
+                  }
                   style={styles.secondaryButton}
                 >
                   <Text style={styles.secondaryButtonText}>
                     {selfieImage ? "Chụp lại" : "Chụp chân dung"}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  disabled={submitting}
-                  onPress={() => void pickKycImage(setSelfieImage, "library")}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonText}>Chọn từ album</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -364,7 +397,8 @@ export default function IdentityVerificationScreen({
             </>
           )}
           <Text style={styles.note}>
-            Ảnh giấy tờ và chân dung được lưu riêng tư trên máy chủ; chỉ quản trị viên đã đăng nhập mới xem được.
+            Ảnh giấy tờ và chân dung được lưu riêng tư trên máy chủ; chỉ quản
+            trị viên đã đăng nhập mới xem được.
           </Text>
         </ScrollView>
       )}
@@ -403,7 +437,12 @@ const styles = StyleSheet.create({
   submitFeedbackTitle: { fontSize: 11, fontWeight: "800" },
   submitSuccessText: { color: "#00685f" },
   submitErrorText: { color: "#B91C1C" },
-  submitFeedbackMessage: { marginTop: 5, color: "#334155", fontSize: 13, lineHeight: 19 },
+  submitFeedbackMessage: {
+    marginTop: 5,
+    color: "#334155",
+    fontSize: 13,
+    lineHeight: 19,
+  },
   section: {
     marginTop: 22,
     marginBottom: 8,
@@ -426,7 +465,12 @@ const styles = StyleSheet.create({
   typeSelected: { borderColor: "#00685f", backgroundColor: "#E6F5F1" },
   typeText: { color: "#475569", fontSize: 12, fontWeight: "600" },
   typeTextSelected: { color: "#00685f" },
-  imageLabel: { marginTop: 14, color: "#334155", fontSize: 13, fontWeight: "600" },
+  imageLabel: {
+    marginTop: 14,
+    color: "#334155",
+    fontSize: 13,
+    fontWeight: "600",
+  },
   documentPreview: {
     width: "100%",
     height: 180,
@@ -434,7 +478,12 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: "#E2E8F0",
   },
-  imageActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },
+  imageActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
   selfiePreview: {
     width: 180,
     height: 180,

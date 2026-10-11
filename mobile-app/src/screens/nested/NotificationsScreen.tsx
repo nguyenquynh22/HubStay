@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -12,6 +13,7 @@ import {
   getNotifications,
   markNotificationRead,
   markNotificationsRead,
+  deleteAllNotifications,
 } from "../../services/api";
 
 interface NotificationItem {
@@ -53,8 +55,32 @@ export default function NotificationsScreen({ onBack, userId }: Props) {
   };
 
   const markAll = async () => {
-    await markNotificationsRead(userId);
-    setItems((current) => current.map((item) => ({ ...item, is_read: 1 })));
+    try {
+      await markNotificationsRead(userId);
+      setItems((current) => current.map((item) => ({ ...item, is_read: 1 })));
+    } catch {
+      Alert.alert("Chưa cập nhật được", "Vui lòng thử lại sau.");
+    }
+  };
+
+  const deleteAll = async () => {
+    try {
+      await deleteAllNotifications(userId);
+      setItems([]);
+    } catch {
+      Alert.alert("Chưa xóa được", "Vui lòng thử lại sau.");
+    }
+  };
+
+  const confirmDeleteAll = () => {
+    Alert.alert(
+      "Xóa tất cả thông báo?",
+      "Thao tác này sẽ xóa vĩnh viễn danh sách thông báo của bạn.",
+      [
+        { text: "Hủy", style: "cancel" },
+        { text: "Xóa tất cả", style: "destructive", onPress: deleteAll },
+      ],
+    );
   };
 
   return (
@@ -65,9 +91,33 @@ export default function NotificationsScreen({ onBack, userId }: Props) {
         </TouchableOpacity>
         <View style={styles.titleRow}>
           <Text style={styles.heading}>Thông báo</Text>
-          <TouchableOpacity onPress={markAll}>
-            <Text style={styles.markAll}>Đọc tất cả</Text>
-          </TouchableOpacity>
+          <View style={styles.actions}>
+            <TouchableOpacity onPress={markAll} disabled={items.length === 0}>
+              <Text
+                style={[
+                  styles.actionText,
+                  items.length === 0 && styles.disabledAction,
+                ]}
+              >
+                Đọc tất cả
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={confirmDeleteAll}
+              disabled={items.length === 0}
+              accessibilityRole="button"
+              accessibilityLabel="Xóa tất cả thông báo"
+            >
+              <Text
+                style={[
+                  styles.deleteText,
+                  items.length === 0 && styles.disabledAction,
+                ]}
+              >
+                Xóa tất cả
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
       {loading ? (
@@ -116,7 +166,10 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   heading: { color: "#1E293B", fontSize: 18, fontWeight: "700" },
-  markAll: { color: "#00685f", fontWeight: "600", fontSize: 12 },
+  actions: { flexDirection: "row", alignItems: "center", gap: 14 },
+  actionText: { color: "#00685f", fontWeight: "600", fontSize: 12 },
+  deleteText: { color: "#B42318", fontWeight: "600", fontSize: 12 },
+  disabledAction: { color: "#94A3B8" },
   content: { padding: 16 },
   item: {
     padding: 15,

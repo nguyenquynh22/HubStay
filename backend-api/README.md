@@ -42,3 +42,18 @@ HubStay website. The server and tunnel must remain running for remote devices
 to use the API. For an Expo Go client opened from outside the local network,
 Expo's Metro connection must also use Expo's own tunnel (`npx expo start
 --tunnel`); this is separate from the backend ngrok tunnel.
+
+## Wallet and VIP payment development flow
+
+Real bank transfers are not connected yet. To exercise the wallet flow locally,
+set `ENABLE_MOCK_PAYMENTS=true` in the backend environment and keep
+`NODE_ENV` different from `production`. The app creates a `PENDING` transaction
+owned by the signed-in JWT account; the user must then explicitly select
+`Mô phỏng ngân hàng xác nhận` to credit the wallet. Mock transactions are stored
+as `MOCK_BANK` and are not evidence of a real transfer.
+
+Before accepting real money, integrate a payment provider/bank webhook. The
+server must verify the provider signature, match the exact amount and unique
+transfer reference to a pending transaction, and credit the transaction's
+stored `user_id` exactly once. Never credit a wallet from a client-side
+"payment successful" callback or uploaded receipt.

@@ -1,6 +1,8 @@
 ﻿const Repo = require("../repositories/posts.repository");
+const UsersRepo = require("../repositories/users.repository");
 const Notifications = require("../services/notifications.service");
 const ContentModeration = require("../services/content_moderation.service");
+const { validatePostTypeForRole } = require("../lib/post-permissions");
 
 module.exports = {
   getAll: async (req, res, next) => {
@@ -88,6 +90,11 @@ module.exports = {
           message: "Bán kính phải là 5, 10, 20 hoặc 30 km",
         });
       }
+      const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+      const limit = Math.min(
+        50,
+        Math.max(1, Number.parseInt(req.query.limit, 10) || 5),
+      );
 
       const data = await Repo.search({
         provinceCode,
@@ -95,10 +102,18 @@ module.exports = {
         wardCode,
         landmarkId,
         radiusKm,
+        page,
+        limit,
       });
       res.json({
         success: true,
-        data,
+        data: data.items,
+        pagination: {
+          page: data.page,
+          limit: data.limit,
+          total: data.total,
+          hasMore: data.hasMore,
+        },
         radius_km: landmarkId ? radiusKm : null,
       });
     } catch (err) {
@@ -138,6 +153,26 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
+      const userId = Number(req.body.user_id ?? req.body.author_id);
+      const requestedPostType = req.body.post_type ?? req.body.type;
+      const user =
+        Number.isInteger(userId) && userId > 0
+          ? await UsersRepo.getById(userId)
+          : null;
+
+      if (!user) {
+        return res.status(401).json({
+          success: false,
+          message: "Người dùng không hợp lệ hoặc chưa đăng nhập.",
+        });
+      }
+      if (!validatePostTypeForRole(user.role, requestedPostType)) {
+        return res.status(403).json({
+          success: false,
+          message: `Vai trò ${user.role} không được đăng bài loại ${requestedPostType}.`,
+        });
+      }
+
       const blockedWord = ContentModeration.findBlockedWord(
         `${req.body.title || ""} ${req.body.description || ""}`,
       );
@@ -183,13 +218,13 @@ module.exports = {
       }
       const newItem = await Repo.create(req.body);
       await Notifications.notify(
-        Number(req.body.user_id ?? req.body.author_id),
+        userId,
         "POST_APPROVED",
         "Tin đăng đã được duyệt",
         "Tin đăng của bạn đã được xuất bản.",
         { post_id: newItem.post_id },
       );
-      const authorId = Number(req.body.user_id ?? req.body.author_id);
+      const authorId = userId;
       const postType = newItem.post_type ?? newItem.type;
       try {
         if (
@@ -239,6 +274,13 @@ module.exports = {
 
   update: async (req, res, next) => {
     try {
+      if (Object.prototype.hasOwnProperty.call(req.body, "status")) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Chỉ chủ bài đăng được xác nhận đã cho thuê hoặc mở lại bài đăng.",
+        });
+      }
       const updated = await Repo.update(req.params.id, req.body);
       res.json({
         success: true,

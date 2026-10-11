@@ -31,6 +31,12 @@ export default function App() {
   const [bookingReturnScreen, setBookingReturnScreen] = useState<
     "POST_DETAIL" | "CHAT_DETAIL"
   >("POST_DETAIL");
+  const [walletReturnScreen, setWalletReturnScreen] = useState<string | null>(
+    null,
+  );
+  const [historyReturnScreen, setHistoryReturnScreen] = useState<string | null>(
+    null,
+  );
 
   const handleAuthenticated = (user: any, token: string) => {
     setAuthToken(token);
@@ -119,6 +125,7 @@ export default function App() {
           onBack={() => setCurrentNestedScreen(null)}
           conversation={selectedConversation}
           userId={currentUserId}
+          token={session.token}
           onBookAppointment={() => {
             setBookingReturnScreen("CHAT_DETAIL");
             setSelectedPost({
@@ -138,18 +145,30 @@ export default function App() {
         />
       ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
         <TransactionHistoryScreen
-          onBack={() => setCurrentNestedScreen(null)}
+          onBack={() => setCurrentNestedScreen(historyReturnScreen)}
           userId={currentUserId}
         />
       ) : currentNestedScreen === "PAYMENT_SIMULATION" ? (
         <PaymentSimulationScreen
-          onBack={() => setCurrentNestedScreen(null)}
-          onOpenVip={() => setCurrentNestedScreen("VIP_PACKAGES")}
+          onBack={() => setCurrentNestedScreen(walletReturnScreen)}
+          onOpenTransactionHistory={() => {
+            setHistoryReturnScreen("PAYMENT_SIMULATION");
+            setCurrentNestedScreen("TRANSACTION_HISTORY");
+          }}
+          onOpenVip={() => {
+            setWalletReturnScreen(null);
+            setCurrentNestedScreen("VIP_PACKAGES");
+          }}
           userId={currentUserId}
         />
       ) : currentNestedScreen === "VIP_PACKAGES" ? (
         <VipPackagesScreen
-          onBack={() => setCurrentNestedScreen("PAYMENT_SIMULATION")}
+          onBack={() => setCurrentNestedScreen(null)}
+          onOpenWallet={() => {
+            setWalletReturnScreen("VIP_PACKAGES");
+            setCurrentNestedScreen("PAYMENT_SIMULATION");
+          }}
+          onVerifyPress={() => setCurrentNestedScreen("VERIFY")}
           userId={currentUserId}
         />
       ) : currentNestedScreen === "NOTIFICATIONS" ? (
@@ -173,14 +192,17 @@ export default function App() {
               mode === "landlord" ? "APPOINTMENTS" : "MY_APPOINTMENTS",
             )
           }
-          onOpenTransactionHistory={() =>
-            setCurrentNestedScreen("TRANSACTION_HISTORY")
-          }
+          onOpenTransactionHistory={() => {
+            setHistoryReturnScreen(null);
+            setCurrentNestedScreen("TRANSACTION_HISTORY");
+          }}
           onOpenNotifications={() => setCurrentNestedScreen("NOTIFICATIONS")}
           onOpenRentalRequests={() => setCurrentNestedScreen("RENTAL_REQUESTS")}
-          onOpenPaymentSimulation={() =>
-            setCurrentNestedScreen("PAYMENT_SIMULATION")
-          }
+          onOpenPaymentSimulation={() => {
+            setWalletReturnScreen(null);
+            setCurrentNestedScreen("PAYMENT_SIMULATION");
+          }}
+          onOpenVipPackages={() => setCurrentNestedScreen("VIP_PACKAGES")}
           onSelectPost={(post) => {
             setSelectedPost(post);
             setCurrentNestedScreen("POST_DETAIL");

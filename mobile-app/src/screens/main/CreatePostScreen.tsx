@@ -29,7 +29,25 @@ interface Props {
   onCreated: () => void;
   onBack?: () => void;
   userId: number;
+  userRole?: string;
 }
+
+const postTypeOptions = [
+  {
+    key: "RENTAL",
+    label: "Cho thuê phòng",
+    sub: "Chính chủ / Môi giới",
+    icon: "apartment",
+  },
+  { key: "SHARE", label: "Ở ghép", sub: "Tìm bạn cùng phòng", icon: "group" },
+  {
+    key: "PASS",
+    label: "Pass phòng",
+    sub: "Nhượng hợp đồng",
+    icon: "swap-horiz",
+  },
+  { key: "FIND", label: "Tìm phòng", sub: "Nhu cầu thuê trọ", icon: "search" },
+] as const;
 
 const blockedWords = [
   "fuck",
@@ -81,11 +99,23 @@ type PostSubmitStatus =
   | { kind: "success"; message: string; details: string[] }
   | { kind: "error"; message: string };
 
-export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
+export default function CreatePostScreen({
+  onCreated,
+  onBack,
+  userId,
+  userRole,
+}: Props) {
   const NativeMapView: any =
     Platform.OS === "web" ? null : require("react-native-maps").default;
   const NativeMapMarker: any =
     Platform.OS === "web" ? null : require("react-native-maps").Marker;
+  const allowedPostTypes: Array<"RENTAL" | "SHARE" | "PASS" | "FIND"> =
+    userRole === "LANDLORD"
+      ? ["RENTAL"]
+      : userRole === "STUDENT" || userRole === "WORKER"
+        ? ["SHARE", "PASS", "FIND"]
+        : [];
+
   // Step State
   const [currentStep, setCurrentStep] = useState<number>(1);
 
@@ -117,6 +147,12 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
   const [newLandmarkName, setNewLandmarkName] = useState("");
   const [newLandmarkCategory, setNewLandmarkCategory] = useState("OTHER");
   const [mapPickerVisible, setMapPickerVisible] = useState(false);
+
+  useEffect(() => {
+    if (allowedPostTypes.length > 0 && !allowedPostTypes.includes(postType)) {
+      setPostType(allowedPostTypes[0]);
+    }
+  }, [allowedPostTypes, postType]);
   const [mapPickerPurpose, setMapPickerPurpose] = useState<"post" | "landmark">(
     "post",
   );
@@ -872,52 +908,38 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
             Hình thức đăng tin <Text style={styles.required}>*</Text>
           </Text>
           <View style={styles.postTypeGrid}>
-            {[
-              {
-                key: "RENTAL",
-                label: "Cho thuê phòng",
-                sub: "Chính chủ / Môi giới",
-                icon: "apartment",
-              },
-              {
-                key: "SHARE",
-                label: "Ở ghép",
-                sub: "Tìm bạn cùng phòng",
-                icon: "group",
-              },
-              {
-                key: "PASS",
-                label: "Pass phòng",
-                sub: "Nhượng hợp đồng",
-                icon: "swap-horiz",
-              },
-              {
-                key: "FIND",
-                label: "Tìm phòng",
-                sub: "Nhu cầu thuê trọ",
-                icon: "search",
-              },
-            ].map((item) => {
+            {postTypeOptions.map((item) => {
+              const allowed = allowedPostTypes.includes(item.key);
               const active = postType === item.key;
               return (
                 <TouchableOpacity
                   key={item.key}
+                  disabled={!allowed}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !allowed, selected: active }}
                   style={[
                     styles.postTypeOption,
                     active && styles.postTypeOptionActive,
+                    !allowed && styles.postTypeOptionDisabled,
                   ]}
-                  onPress={() => setPostType(item.key as any)}
+                  onPress={() => {
+                    if (!allowed) return;
+                    setPostType(item.key);
+                  }}
                 >
                   <MaterialIcons
                     name={item.icon as any}
                     size={20}
-                    color={active ? "#00685f" : "#6d7a77"}
+                    color={
+                      !allowed ? "#a8b3ae" : active ? "#00685f" : "#6d7a77"
+                    }
                   />
                   <View style={styles.postTypeOptionText}>
                     <Text
                       style={[
                         styles.postTypeTitle,
                         active && styles.postTypeTitleActive,
+                        !allowed && styles.postTypeTitleDisabled,
                       ]}
                     >
                       {item.label}
@@ -926,6 +948,7 @@ export default function CreatePostScreen({ onCreated, onBack, userId }: Props) {
                       style={[
                         styles.postTypeSub,
                         active && styles.postTypeSubActive,
+                        !allowed && styles.postTypeSubDisabled,
                       ]}
                     >
                       {item.sub}
@@ -1690,6 +1713,10 @@ const styles = StyleSheet.create({
     borderColor: "#00685f",
     backgroundColor: "#f4fffc",
   },
+  postTypeOptionDisabled: {
+    borderColor: "#d8dfdc",
+    backgroundColor: "#f2f5f3",
+  },
   postTypeOptionText: {
     marginLeft: 6,
     flex: 1,
@@ -1702,12 +1729,18 @@ const styles = StyleSheet.create({
   postTypeTitleActive: {
     color: "#00685f",
   },
+  postTypeTitleDisabled: {
+    color: "#a8b3ae",
+  },
   postTypeSub: {
     fontSize: 10,
     color: "#6d7a77",
   },
   postTypeSubActive: {
     color: "#008378",
+  },
+  postTypeSubDisabled: {
+    color: "#bac3c0",
   },
 
   /* Image Upload */

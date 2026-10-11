@@ -61,7 +61,7 @@ class SubscriptionsRepository {
       }
       if (user.role !== "LANDLORD") {
         await connection.rollback();
-        return { error: "LANDLORD_ONLY" };
+        return { error: "INVALID_ROLE" };
       }
       if (Number(user.is_verified) !== 1) {
         await connection.rollback();

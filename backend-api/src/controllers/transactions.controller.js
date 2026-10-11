@@ -5,8 +5,10 @@ const Notifications = require("../services/notifications.service");
 module.exports = {
   getAll: async (req, res, next) => {
     try {
-      const data = await Repo.getAll();
-      res.json({ success: true, data });
+      return res.status(403).json({
+        success: false,
+        message: "Không được phép xem giao dịch của tài khoản khác.",
+      });
     } catch (err) {
       next(err);
     }
@@ -15,7 +17,7 @@ module.exports = {
   getById: async (req, res, next) => {
     try {
       const item = await Repo.getById(req.params.id);
-      if (!item)
+      if (!item || Number(item.user_id) !== res.locals.user.userId)
         return res
           .status(404)
           .json({ success: false, message: "Giao dịch không tồn tại" });
@@ -27,8 +29,20 @@ module.exports = {
 
   getByUser: async (req, res, next) => {
     try {
-      const data = await Repo.getByUserId(req.params.userId);
-      res.json({ success: true, data });
+      if (Number(req.params.userId) !== res.locals.user.userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ được xem lịch sử giao dịch của mình.",
+        });
+      }
+      const data = await Repo.getByUserId(res.locals.user.userId);
+      res.json({
+        success: true,
+        data,
+        mock_payment_enabled:
+          process.env.NODE_ENV !== "production" &&
+          process.env.ENABLE_MOCK_PAYMENTS === "true",
+      });
     } catch (err) {
       next(err);
     }
@@ -36,9 +50,11 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const user_id = Number(req.body.user_id);
+      const user_id = res.locals.user.userId;
       const amount = Number(req.body.amount);
-      const payment_method = req.body.payment_method || "VIETQR";
+      const mockPaymentEnabled =
+        process.env.NODE_ENV !== "production" &&
+        process.env.ENABLE_MOCK_PAYMENTS === "true";
       if (
         !Number.isInteger(user_id) ||
         user_id < 1 ||
@@ -50,12 +66,11 @@ module.exports = {
           message: "user_id và số tiền nạp hợp lệ là bắt buộc",
         });
       }
-      if (
-        !["BANK_TRANSFER", "VIETQR", "ADMIN_MANUAL"].includes(payment_method)
-      ) {
-        return res.status(400).json({
+      if (!mockPaymentEnabled) {
+        return res.status(503).json({
           success: false,
-          message: "Phương thức thanh toán không hợp lệ",
+          message:
+            "Chưa cấu hình cổng thanh toán. Không tạo giao dịch chuyển khoản thật.",
         });
       }
       const transaction_code = `TOPUP-${crypto.randomUUID()}`;
@@ -63,7 +78,7 @@ module.exports = {
       const newItem = await Repo.create({
         user_id,
         amount,
-        payment_method,
+        payment_method: "MOCK_BANK",
         transaction_code,
         transaction_type: "TOP_UP",
         status: "PENDING",
@@ -73,6 +88,7 @@ module.exports = {
         success: true,
         message: "Tạo giao dịch thành công",
         data: newItem,
+        mock_payment_enabled: mockPaymentEnabled,
       });
     } catch (err) {
       next(err);
@@ -93,15 +109,26 @@ module.exports = {
 
   simulateSuccess: async (req, res, next) => {
     try {
-      if (process.env.NODE_ENV === "production") {
+      if (
+        process.env.NODE_ENV === "production" ||
+        process.env.ENABLE_MOCK_PAYMENTS !== "true"
+      ) {
         return res.status(403).json({
           success: false,
-          message: "Mô phỏng thanh toán chỉ khả dụng ở môi trường phát triển",
+          message: "Mô phỏng thanh toán chưa được bật trên máy chủ phát triển.",
         });
       }
-      const result = await Repo.completeTopUp(req.params.id);
+      const result = await Repo.completeTopUp(
+        req.params.id,
+        res.locals.user.userId,
+      );
       if (result.error) {
-        const status = result.error === "TRANSACTION_NOT_FOUND" ? 404 : 409;
+        const status =
+          result.error === "TRANSACTION_NOT_FOUND"
+            ? 404
+            : result.error === "FORBIDDEN"
+              ? 403
+              : 409;
         return res
           .status(status)
           .json({ success: false, message: result.error });

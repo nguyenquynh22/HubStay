@@ -1,36 +1,48 @@
+const jwt = require("jsonwebtoken");
 const Conversation = require("../models/conversation.model");
 const Message = require("../models/message.model");
 const Posts = require("../repositories/posts.repository");
 const Notifications = require("../services/notifications.service");
 
 module.exports = (io) => {
+  io.use((socket, next) => {
+    const token = socket.handshake.auth?.token;
+    const secret = process.env.JWT_SECRET;
+    if (!token || !secret) return next(new Error("Vui lòng đăng nhập để chat"));
+    try {
+      const payload = jwt.verify(token, secret, { issuer: "hubstay-api" });
+      const userId = Number(payload.sub);
+      if (!Number.isInteger(userId) || userId < 1)
+        return next(new Error("Phiên đăng nhập không hợp lệ"));
+      socket.data.userId = userId;
+      next();
+    } catch {
+      next(new Error("Phiên đăng nhập không hợp lệ hoặc đã hết hạn"));
+    }
+  });
+
   io.on("connection", (socket) => {
     socket.on(
       "join_conversation",
-      async ({ conversation_id, user_id } = {}, done = () => {}) => {
+      async ({ conversation_id } = {}, done = () => {}) => {
         try {
           const c = await Conversation.findById(conversation_id);
-          if (!c || ![c.tenant_id, c.landlord_id].includes(Number(user_id)))
+          if (!c || ![c.tenant_id, c.landlord_id].includes(socket.data.userId))
             return done({
               success: false,
               message: "Bạn không thuộc cuộc trò chuyện này",
             });
           const post = await Posts.getById(c.post_id);
-          if (!post || post.status !== "AVAILABLE") {
-            c.is_closed = true;
-            c.close_reason = "Bài đăng đã cho thuê hoặc đóng";
-            await c.save();
+          if (!post) {
             return done({
               success: false,
-              message:
-                "Bài đăng đã đóng, cuộc trò chuyện chỉ còn ở chế độ lưu trữ",
+              message: "Bài đăng không còn tồn tại",
             });
           }
-          if (c.is_closed)
+          if (c.is_closed && post.status === "AVAILABLE")
             return done({ success: false, message: "Cuộc trò chuyện đã đóng" });
-          socket.data.userId = Number(user_id);
           socket.join(String(conversation_id));
-          done({ success: true });
+          done({ success: true, post_status: post.status });
         } catch {
           done({
             success: false,
@@ -57,18 +69,20 @@ module.exports = (io) => {
               success: false,
               message: "Bạn không thuộc cuộc trò chuyện này",
             });
-          if (c.is_closed)
-            return done({ success: false, message: "Cuộc trò chuyện đã đóng" });
           const post = await Posts.getById(c.post_id);
-          if (!post || post.status !== "AVAILABLE") {
-            c.is_closed = true;
-            c.close_reason = "Bài đăng đã cho thuê hoặc đóng";
-            await c.save();
+          if (c.is_closed)
             return done({
               success: false,
-              message: "Bài đăng đã đóng, không thể gửi tin nhắn",
+              message: "Cuộc trò chuyện đã đóng",
             });
-          }
+          if (!post || post.status !== "AVAILABLE")
+            return done({
+              success: false,
+              message:
+                post?.status === "RENTED"
+                  ? "Bài đăng đã có người thuê. Không thể gửi tin nhắn."
+                  : "Bài đăng hiện không khả dụng để nhắn tin.",
+            });
           const message = await Message.create({
             conversation_id,
             sender_id: socket.data.userId,

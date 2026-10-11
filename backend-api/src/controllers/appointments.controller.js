@@ -33,6 +33,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "userId không hợp lệ" });
+      if (landlordId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem lịch hẹn của tài khoản khác",
+        });
       const order = req.query.sort === "oldest" ? "ASC" : "DESC";
       const data = await Repo.getForLandlord(landlordId, order);
       res.json({ success: true, data });
@@ -48,6 +53,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "userId không hợp lệ" });
+      if (tenantId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem lịch hẹn của tài khoản khác",
+        });
       const order = req.query.sort === "oldest" ? "ASC" : "DESC";
       const data = await Repo.getForTenant(tenantId, order);
       res.json({ success: true, data });
@@ -60,9 +70,7 @@ module.exports = {
     try {
       const postId = parseId(req.body.post_id);
       const source = req.body.source === "EXTERNAL" ? "EXTERNAL" : "IN_APP";
-      const actorId = parseId(
-        source === "EXTERNAL" ? req.body.owner_id : req.body.tenant_id,
-      );
+      const actorId = res.locals.user.userId;
       const appointmentDate = req.body.appointment_date;
       const appointmentTime = req.body.appointment_time;
       const guestName =
@@ -98,6 +106,15 @@ module.exports = {
         return res
           .status(404)
           .json({ success: false, message: "Không tìm thấy bài đăng" });
+
+      const requestedActorId = parseId(
+        source === "EXTERNAL" ? req.body.owner_id : req.body.tenant_id,
+      );
+      if (requestedActorId && requestedActorId !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể đặt lịch thay cho tài khoản khác",
+        });
 
       let tenantId = actorId;
       let status = "PENDING";
@@ -168,11 +185,16 @@ module.exports = {
   update: async (req, res, next) => {
     try {
       const appointmentId = parseId(req.params.id);
-      const actorId = parseId(req.body.actor_id);
-      if (!appointmentId || !actorId)
+      const actorId = res.locals.user.userId;
+      if (!appointmentId)
         return res.status(400).json({
           success: false,
-          message: "appointment_id hoặc actor_id không hợp lệ",
+          message: "appointment_id không hợp lệ",
+        });
+      if (req.body.actor_id && parseId(req.body.actor_id) !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể cập nhật lịch hẹn bằng tài khoản khác",
         });
 
       const appointment = await Repo.getById(appointmentId);
