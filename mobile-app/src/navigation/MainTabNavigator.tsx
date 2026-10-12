@@ -26,6 +26,7 @@ interface Props {
   onOpenRentalRequests: () => void;
   onLogout: () => void;
   onOpenPaymentSimulation: () => void;
+  onOpenVipPackages: () => void;
   onSelectPost: (post: any) => void;
   onOpenChat: (conversation: any) => void;
   onOpenCreate: () => void;
@@ -41,6 +42,7 @@ export const MainTabNavigator: React.FC<Props> = ({
   onOpenRentalRequests,
   onLogout,
   onOpenPaymentSimulation,
+  onOpenVipPackages,
   onSelectPost,
   onOpenChat,
   onOpenCreate,
@@ -79,7 +81,15 @@ export const MainTabNavigator: React.FC<Props> = ({
           <ChatListScreen onOpenChat={onOpenChat} userId={userId} />
         )}
         {currentTab === "CREATE" && (
-          <CreatePostScreen onCreated={onOpenCreate} userId={userId} />
+          <CreatePostScreen
+            onCreated={() => {
+              setCurrentTab("ACTIVITY");
+              onOpenCreate();
+            }}
+            onBack={() => setCurrentTab("HOME")}
+            userId={userId}
+            userRole={userRole}
+          />
         )}
         {currentTab === "ACTIVITY" && (
           <MyActivityScreen
@@ -98,6 +108,7 @@ export const MainTabNavigator: React.FC<Props> = ({
             onOpenRentalRequests={onOpenRentalRequests}
             onLogout={onLogout}
             onOpenPaymentSimulation={onOpenPaymentSimulation}
+            onOpenVipPackages={onOpenVipPackages}
             onOpenAppointments={onOpenAppointments}
           />
         )}
@@ -169,7 +180,7 @@ export const MainTabNavigator: React.FC<Props> = ({
               currentTab === "ACTIVITY" && styles.activeText,
             ]}
           >
-            Bài viết
+            Bài của tôi
           </Text>
         </TouchableOpacity>
 

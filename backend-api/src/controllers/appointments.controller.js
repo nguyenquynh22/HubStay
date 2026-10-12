@@ -33,6 +33,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "userId không hợp lệ" });
+      if (landlordId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem lịch hẹn của tài khoản khác",
+        });
       const order = req.query.sort === "oldest" ? "ASC" : "DESC";
       const data = await Repo.getForLandlord(landlordId, order);
       res.json({ success: true, data });
@@ -48,6 +53,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "userId không hợp lệ" });
+      if (tenantId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem lịch hẹn của tài khoản khác",
+        });
       const order = req.query.sort === "oldest" ? "ASC" : "DESC";
       const data = await Repo.getForTenant(tenantId, order);
       res.json({ success: true, data });
@@ -60,9 +70,7 @@ module.exports = {
     try {
       const postId = parseId(req.body.post_id);
       const source = req.body.source === "EXTERNAL" ? "EXTERNAL" : "IN_APP";
-      const actorId = parseId(
-        source === "EXTERNAL" ? req.body.owner_id : req.body.tenant_id,
-      );
+      const actorId = res.locals.user.userId;
       const appointmentDate = req.body.appointment_date;
       const appointmentTime = req.body.appointment_time;
       const guestName =
@@ -98,6 +106,15 @@ module.exports = {
         return res
           .status(404)
           .json({ success: false, message: "Không tìm thấy bài đăng" });
+
+      const requestedActorId = parseId(
+        source === "EXTERNAL" ? req.body.owner_id : req.body.tenant_id,
+      );
+      if (requestedActorId && requestedActorId !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể đặt lịch thay cho tài khoản khác",
+        });
 
       let tenantId = actorId;
       let status = "PENDING";
@@ -168,11 +185,16 @@ module.exports = {
   update: async (req, res, next) => {
     try {
       const appointmentId = parseId(req.params.id);
-      const actorId = parseId(req.body.actor_id);
-      if (!appointmentId || !actorId)
+      const actorId = res.locals.user.userId;
+      if (!appointmentId)
         return res.status(400).json({
           success: false,
-          message: "appointment_id hoặc actor_id không hợp lệ",
+          message: "appointment_id không hợp lệ",
+        });
+      if (req.body.actor_id && parseId(req.body.actor_id) !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể cập nhật lịch hẹn bằng tài khoản khác",
         });
 
       const appointment = await Repo.getById(appointmentId);
@@ -192,6 +214,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "Lịch đã hủy không thể cập nhật" });
+      if (appointment.status === "REJECTED")
+        return res.status(400).json({
+          success: false,
+          message: "Lịch đã bị từ chối không thể cập nhật",
+        });
 
       const data = {};
       if (
@@ -207,6 +234,15 @@ module.exports = {
         const timeValue = String(time).slice(0, 8);
         if (!isValidDate(dateValue) || !isValidTime(timeValue))
           return invalidAppointmentTime(res);
+        const scheduledAt = new Date(
+          `${dateValue}T${timeValue.slice(0, 5)}:00`,
+        );
+        if (scheduledAt <= new Date())
+          return res.status(400).json({
+            success: false,
+            message:
+              "Lịch xem phòng phải được đặt vào thời điểm trong tương lai.",
+          });
         data.appointment_date = dateValue;
         data.appointment_time = timeValue;
       }
@@ -214,15 +250,31 @@ module.exports = {
         data.note =
           typeof req.body.note === "string" ? req.body.note.trim() : null;
       if (req.body.status !== undefined) {
-        if (req.body.status === "CONFIRMED" && !isLandlord)
+        if (["CONFIRMED", "REJECTED"].includes(req.body.status) && !isLandlord)
           return res.status(403).json({
             success: false,
-            message: "Chỉ chủ bài đăng mới xác nhận lịch hẹn",
+            message: "Chỉ chủ bài đăng mới được xác nhận hoặc từ chối lịch hẹn",
           });
-        if (!["CONFIRMED", "CANCELLED"].includes(req.body.status))
+        if (!["CONFIRMED", "REJECTED", "CANCELLED"].includes(req.body.status))
           return res.status(400).json({
             success: false,
             message: "Trạng thái lịch hẹn không hợp lệ",
+          });
+        if (
+          ["CONFIRMED", "REJECTED"].includes(req.body.status) &&
+          appointment.status !== "PENDING"
+        )
+          return res.status(409).json({
+            success: false,
+            message: "Chỉ lịch đang chờ mới có thể xác nhận hoặc từ chối",
+          });
+        if (
+          req.body.status === "CANCELLED" &&
+          !["PENDING", "CONFIRMED"].includes(appointment.status)
+        )
+          return res.status(409).json({
+            success: false,
+            message: "Lịch này không còn ở trạng thái có thể hủy",
           });
         data.status = req.body.status;
       }
@@ -231,7 +283,13 @@ module.exports = {
           .status(400)
           .json({ success: false, message: "Không có thay đổi hợp lệ" });
 
-      await Repo.update(appointmentId, data);
+      const updated = await Repo.update(appointmentId, data);
+      if (!updated)
+        return res.status(409).json({
+          success: false,
+          message:
+            "Lịch hẹn vừa được cập nhật hoặc không còn ở trạng thái phù hợp.",
+        });
       if (data.status) {
         const recipientId = isLandlord
           ? Number(appointment.tenant_id)
@@ -241,10 +299,14 @@ module.exports = {
           `APPOINTMENT_${data.status}`,
           data.status === "CONFIRMED"
             ? "Lịch hẹn đã được xác nhận"
-            : "Lịch hẹn đã bị hủy",
+            : data.status === "REJECTED"
+              ? "Lịch hẹn đã bị từ chối"
+              : "Lịch hẹn đã bị hủy",
           data.status === "CONFIRMED"
             ? "Chủ trọ đã xác nhận lịch xem phòng của bạn."
-            : "Lịch xem phòng đã được hủy.",
+            : data.status === "REJECTED"
+              ? "Chủ trọ không thể nhận lịch xem phòng này."
+              : "Lịch xem phòng đã được hủy.",
           { appointment_id: appointmentId },
         );
       }

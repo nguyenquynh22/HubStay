@@ -308,6 +308,22 @@ export const adminApi = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  verifyRegistrationOtp: (email: string, otp: string) =>
+    request<{ success: boolean; message: string }>(
+      "/auth/register/verify-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ email, otp }),
+      },
+    ),
+  resendRegistrationOtp: (email: string) =>
+    request<{ success: boolean; message: string }>(
+      "/auth/register/resend-otp",
+      {
+        method: "POST",
+        body: JSON.stringify({ email }),
+      },
+    ),
   activateAccount: (token: string, password: string) =>
     request<{ success: boolean; message: string }>("/auth/activate-account", {
       method: "POST",

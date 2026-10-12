@@ -9,7 +9,12 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { getUserById, getVipPackages, purchaseVip } from "../../services/api";
+import {
+  getSubscriptionsByUser,
+  getUserById,
+  getVipPackages,
+  purchaseVip,
+} from "../../services/api";
 
 interface VipPackage {
   package_name: string;
@@ -19,25 +24,42 @@ interface VipPackage {
 
 interface Props {
   onBack?: () => void;
+  onOpenWallet?: () => void;
+  onVerifyPress?: () => void;
   userId: number;
 }
 
-export default function VipPackagesScreen({ onBack, userId }: Props) {
+export default function VipPackagesScreen({
+  onBack,
+  onOpenWallet,
+  onVerifyPress,
+  userId,
+}: Props) {
   const [packages, setPackages] = useState<VipPackage[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [user, setUser] = useState<any>(null);
   const [balance, setBalance] = useState(0);
   const [selected, setSelected] = useState("");
   const [loading, setLoading] = useState(true);
   const [purchasing, setPurchasing] = useState(false);
 
   const refresh = async () => {
-    const [packageResponse, userResponse] = await Promise.all([
-      getVipPackages(),
-      getUserById(userId),
-    ]);
+    const [packageResponse, userResponse, subscriptionResponse] =
+      await Promise.all([
+        getVipPackages(),
+        getUserById(userId),
+        getSubscriptionsByUser(userId),
+      ]);
     const options = packageResponse.data || [];
     setPackages(options);
-    setSelected((current) => current || options[0]?.package_name || "");
+    setSelected((current) =>
+      options.some((item: VipPackage) => item.package_name === current)
+        ? current
+        : options[0]?.package_name || "",
+    );
+    setUser(userResponse.data);
     setBalance(Number(userResponse.data?.wallet_balance || 0));
+    setSubscriptions(subscriptionResponse.data || []);
   };
 
   useEffect(() => {
@@ -54,6 +76,30 @@ export default function VipPackagesScreen({ onBack, userId }: Props) {
   const selectedPackage = packages.find(
     (item) => item.package_name === selected,
   );
+  const isVerified = Number(user?.is_verified) === 1;
+  const isLandlord = user?.role === "LANDLORD";
+  const isVipActive =
+    Number(user?.is_vip) === 1 &&
+    (!user?.vip_expires_at || new Date(user.vip_expires_at) > new Date());
+  const insufficientBalance =
+    !!selectedPackage && balance < Number(selectedPackage.price);
+
+  const handlePrimaryAction = () => {
+    if (!isLandlord) {
+      Alert.alert("Gói VIP", "Gói VIP chỉ dành cho tài khoản chủ trọ.");
+      return;
+    }
+    if (!isVerified) {
+      onVerifyPress?.();
+      return;
+    }
+    if (insufficientBalance) {
+      onOpenWallet?.();
+      return;
+    }
+    void buy();
+  };
+
   const buy = async () => {
     if (!selectedPackage || selectedPackage.price <= 0) return;
     setPurchasing(true);
@@ -84,7 +130,7 @@ export default function VipPackagesScreen({ onBack, userId }: Props) {
         <TouchableOpacity onPress={onBack}>
           <Text style={styles.back}>‹ Quay lại</Text>
         </TouchableOpacity>
-        <Text style={styles.heading}>Gói VIP chủ trọ</Text>
+        <Text style={styles.heading}>Gói VIP</Text>
       </View>
       {loading ? (
         <ActivityIndicator style={{ marginTop: 32 }} color="#00685f" />
@@ -96,9 +142,21 @@ export default function VipPackagesScreen({ onBack, userId }: Props) {
               {balance.toLocaleString("vi-VN")} đ
             </Text>
             <Text style={styles.description}>
-              Bài đăng VIP được ưu tiên trong kết quả tìm kiếm.
+              Gói VIP giúp chủ trọ tăng khả năng tiếp cận người tìm phòng.
             </Text>
+            {isVipActive && user?.vip_expires_at && (
+              <Text style={styles.expiry}>
+                Đang hoạt động đến{" "}
+                {new Date(user.vip_expires_at).toLocaleDateString("vi-VN")}
+              </Text>
+            )}
           </View>
+          <TouchableOpacity onPress={onOpenWallet} style={styles.walletLink}>
+            <Text style={styles.walletLinkText}>Nạp tiền vào ví</Text>
+            <Text style={styles.walletBalance}>
+              {balance.toLocaleString("vi-VN")} đ
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.section}>THỜI HẠN</Text>
           {packages.map((item) => (
             <TouchableOpacity
@@ -127,25 +185,68 @@ export default function VipPackagesScreen({ onBack, userId }: Props) {
           ))}
           <TouchableOpacity
             disabled={
-              purchasing || !selectedPackage || selectedPackage.price <= 0
+              !isLandlord ||
+              purchasing ||
+              !selectedPackage ||
+              selectedPackage.price <= 0
             }
-            onPress={buy}
+            onPress={handlePrimaryAction}
             style={[
               styles.button,
-              (!selectedPackage || selectedPackage.price <= 0) &&
+              (!isLandlord ||
+                purchasing ||
+                !selectedPackage ||
+                selectedPackage.price <= 0) &&
                 styles.buttonDisabled,
             ]}
           >
             {purchasing ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text style={styles.buttonText}>Thanh toán bằng ví nội bộ</Text>
+              <Text style={styles.buttonText}>
+                {!isLandlord
+                  ? "VIP chỉ dành cho chủ trọ"
+                  : !isVerified
+                    ? "Xác minh KYC để tiếp tục"
+                    : insufficientBalance
+                      ? "Nạp tiền vào ví"
+                      : isVipActive
+                        ? "Thanh toán và gia hạn VIP"
+                        : "Thanh toán và đăng ký VIP"}
+              </Text>
             )}
           </TouchableOpacity>
           <Text style={styles.footnote}>
-            Thanh toán trực tiếp bằng ví nội bộ. Cần tài khoản chủ trọ đã xác
-            minh và số dư đủ. Giá lấy từ cấu hình backend.
+            Thanh toán bằng số dư ví. KYC phải được duyệt và số dư phải đủ. Nếu
+            VIP còn hạn, thời hạn gói mới được cộng nối tiếp.
           </Text>
+          <Text style={styles.section}>LỊCH SỬ ĐĂNG KÝ</Text>
+          {subscriptions.length === 0 ? (
+            <Text style={styles.historyEmpty}>Chưa có lịch sử gói VIP.</Text>
+          ) : (
+            subscriptions.map((item) => (
+              <TouchableOpacity
+                key={item.subscription_id}
+                onPress={() =>
+                  packages.some(
+                    (plan) => plan.package_name === item.package_name,
+                  ) && setSelected(item.package_name)
+                }
+                style={styles.historyRow}
+              >
+                <View style={styles.historyCopy}>
+                  <Text style={styles.historyName}>{item.package_name}</Text>
+                  <Text style={styles.historyDate}>
+                    {new Date(item.start_date).toLocaleDateString("vi-VN")} -{" "}
+                    {new Date(item.end_date).toLocaleDateString("vi-VN")}
+                  </Text>
+                </View>
+                <Text style={styles.historyStatus}>
+                  {new Date(item.end_date) > new Date() ? "Còn hạn" : "Hết hạn"}
+                </Text>
+              </TouchableOpacity>
+            ))
+          )}
         </ScrollView>
       )}
     </SafeAreaView>
@@ -167,6 +268,19 @@ const styles = StyleSheet.create({
   summaryLabel: { color: "#C7F0E8", fontSize: 11, fontWeight: "700" },
   balance: { marginTop: 7, color: "white", fontSize: 25, fontWeight: "800" },
   description: { marginTop: 8, color: "white", lineHeight: 20 },
+  expiry: { marginTop: 8, color: "#D1FAE5", fontWeight: "700" },
+  walletLink: {
+    marginTop: 12,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: 8,
+  },
+  walletLinkText: { color: "#00685f", fontWeight: "700" },
+  walletBalance: { color: "#334155", fontWeight: "700" },
   section: {
     marginTop: 24,
     marginBottom: 8,
@@ -208,4 +322,20 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: "#94A3B8" },
   buttonText: { color: "white", fontWeight: "700" },
   footnote: { marginTop: 12, color: "#64748B", fontSize: 12, lineHeight: 18 },
+  historyEmpty: { color: "#64748B", paddingVertical: 14 },
+  historyRow: {
+    minHeight: 62,
+    marginBottom: 8,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+  },
+  historyCopy: { flex: 1 },
+  historyName: { color: "#1E293B", fontWeight: "700" },
+  historyDate: { color: "#64748B", fontSize: 11, marginTop: 4 },
+  historyStatus: { color: "#00685f", fontSize: 12, fontWeight: "700" },
 });

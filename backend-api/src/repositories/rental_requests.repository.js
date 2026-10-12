@@ -27,8 +27,10 @@ class RentalRequestsRepository {
 
   static async getByPostId(postId) {
     const sql = `
-      SELECT r.*, u.full_name AS tenant_name, u.phone AS tenant_phone, u.avatar_url
+      SELECT r.*, u.full_name AS tenant_name, u.phone AS tenant_phone,
+             u.avatar_url, p.author_id
       FROM rental_requests r
+      JOIN posts p ON p.post_id = r.post_id
       LEFT JOIN users u ON r.tenant_id = u.user_id
       WHERE r.post_id = ?
       ORDER BY r.created_at DESC
@@ -62,6 +64,14 @@ class RentalRequestsRepository {
     `;
     const [rows] = await db.query(sql, [tenantId]);
     return rows;
+  }
+
+  static async getPostOwner(postId) {
+    const [rows] = await db.query(
+      "SELECT author_id FROM posts WHERE post_id = ? LIMIT 1",
+      [postId],
+    );
+    return rows[0]?.author_id ?? null;
   }
 
   static async create(data) {
@@ -258,6 +268,45 @@ class RentalRequestsRepository {
         ),
         status: "RENTED",
       };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  static async reopenPost(postId, actorId) {
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query(
+        "SELECT author_id, status FROM posts WHERE post_id = ? FOR UPDATE",
+        [postId],
+      );
+      const post = rows[0];
+      if (!post) {
+        await connection.rollback();
+        return { error: "POST_NOT_FOUND" };
+      }
+      if (Number(post.author_id) !== Number(actorId)) {
+        await connection.rollback();
+        return { error: "FORBIDDEN" };
+      }
+      if (post.status !== "RENTED") {
+        await connection.rollback();
+        return { error: "POST_NOT_RENTED" };
+      }
+      const [result] = await connection.query(
+        "UPDATE posts SET status = 'AVAILABLE' WHERE post_id = ? AND status = 'RENTED'",
+        [postId],
+      );
+      if (!result.affectedRows) {
+        await connection.rollback();
+        return { error: "POST_NOT_RENTED" };
+      }
+      await connection.commit();
+      return { post_id: Number(postId), status: "AVAILABLE" };
     } catch (error) {
       await connection.rollback();
       throw error;

@@ -16,6 +16,7 @@ interface Props {
   onBack: () => void;
   conversation: any;
   userId: number;
+  token: string;
   onBookAppointment: () => void;
 }
 
@@ -23,6 +24,7 @@ export default function ChatDetailScreen({
   onBack,
   conversation,
   userId,
+  token,
   onBookAppointment,
 }: Props) {
   const [message, setMessage] = useState("");
@@ -30,6 +32,9 @@ export default function ChatDetailScreen({
   const [loading, setLoading] = useState(true);
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
+  const [postStatus, setPostStatus] = useState<string>(
+    conversation.post_status || "AVAILABLE",
+  );
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList<any> | null>(null);
 
@@ -40,6 +45,7 @@ export default function ChatDetailScreen({
     ).replace(/\/api\/?$/, "");
     const socket = io(base, {
       transports: ["websocket", "polling"],
+      auth: { token },
       reconnection: true,
       reconnectionAttempts: Infinity,
     });
@@ -49,7 +55,7 @@ export default function ChatDetailScreen({
       setConnectionError(false);
       socket.emit(
         "join_conversation",
-        { conversation_id: conversation._id, user_id: userId },
+        { conversation_id: conversation._id },
         async (result: any) => {
           if (!active) return;
           if (!result?.success) {
@@ -57,6 +63,9 @@ export default function ChatDetailScreen({
             setLoading(false);
             return;
           }
+          setPostStatus(
+            result.post_status || conversation.post_status || "AVAILABLE",
+          );
           try {
             const history = await getMessages(conversation._id, userId);
             if (active)
@@ -76,6 +85,11 @@ export default function ChatDetailScreen({
       );
     });
     socket.on("disconnect", () => setConnected(false));
+    socket.on("post_status_changed", (event: any) => {
+      if (Number(event.post_id) === Number(conversation.post_id)) {
+        setPostStatus(event.status);
+      }
+    });
     socket.on("connect_error", () => {
       setConnected(false);
       setConnectionError(true);
@@ -93,7 +107,7 @@ export default function ChatDetailScreen({
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [conversation._id, userId]);
+  }, [conversation._id, token, userId]);
 
   const send = () => {
     const text = message.trim();
@@ -169,27 +183,37 @@ export default function ChatDetailScreen({
           Chưa kết nối được máy chủ. Ứng dụng sẽ tự thử kết nối lại.
         </Text>
       )}
-      <View style={styles.composer}>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          placeholder="Nhập tin nhắn..."
-          placeholderTextColor="#9AAAB0"
-          style={styles.input}
-          maxLength={4000}
-          multiline
-        />
-        <TouchableOpacity
-          disabled={!connected || !message.trim()}
-          onPress={send}
-          style={[
-            styles.send,
-            (!connected || !message.trim()) && styles.sendDisabled,
-          ]}
-        >
-          <Text style={styles.sendText}>↑</Text>
-        </TouchableOpacity>
-      </View>
+      {postStatus !== "AVAILABLE" ? (
+        <View style={styles.closedNotice}>
+          <Text style={styles.closedNoticeText}>
+            {postStatus === "RENTED"
+              ? "🔒 Bài đăng này đã có người thuê. Bạn không thể tiếp tục nhắn tin về phòng này."
+              : "Bài đăng này hiện không hoạt động. Bạn không thể tiếp tục nhắn tin."}
+          </Text>
+        </View>
+      ) : (
+        <View style={styles.composer}>
+          <TextInput
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Nhập tin nhắn..."
+            placeholderTextColor="#9AAAB0"
+            style={styles.input}
+            maxLength={4000}
+            multiline
+          />
+          <TouchableOpacity
+            disabled={!connected || !message.trim()}
+            onPress={send}
+            style={[
+              styles.send,
+              (!connected || !message.trim()) && styles.sendDisabled,
+            ]}
+          >
+            <Text style={styles.sendText}>↑</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
@@ -238,6 +262,20 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFF7E8",
     padding: 8,
     fontSize: 12,
+  },
+  closedNotice: {
+    backgroundColor: "#FFF7E8",
+    borderTopWidth: 1,
+    borderColor: "#F3D7A5",
+    padding: 14,
+    paddingBottom: 40,
+  },
+  closedNoticeText: {
+    color: "#8A4B08",
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: "center",
+    fontWeight: "600",
   },
   composer: {
     backgroundColor: "#FFF",

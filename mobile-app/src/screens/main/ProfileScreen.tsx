@@ -21,6 +21,7 @@ interface Props {
   onOpenRentalRequests?: () => void;
   onLogout?: () => void;
   onOpenPaymentSimulation?: () => void;
+  onOpenVipPackages?: () => void;
   onOpenAppointments?: (mode: "landlord" | "tenant") => void;
   userId: number;
 }
@@ -32,6 +33,7 @@ export default function ProfileScreen({
   onOpenRentalRequests,
   onLogout,
   onOpenPaymentSimulation,
+  onOpenVipPackages,
   onOpenAppointments,
   userId,
 }: Props) {
@@ -78,6 +80,17 @@ export default function ProfileScreen({
   };
 
   const saveProfile = async () => {
+    if (!editName.trim() || editName.trim().length > 100) {
+      Alert.alert("Họ tên không hợp lệ", "Họ tên cần có từ 1 đến 100 ký tự.");
+      return;
+    }
+    if (editPhone.trim().length > 15) {
+      Alert.alert(
+        "Số điện thoại không hợp lệ",
+        "Số điện thoại tối đa 15 ký tự.",
+      );
+      return;
+    }
     try {
       await updateUser(userId, {
         full_name: editName.trim(),
@@ -247,7 +260,7 @@ export default function ProfileScreen({
             style={styles.menuItem}
             onPress={onOpenPaymentSimulation}
           >
-            <Text style={styles.menuText}>🧾 Nạp tiền & gói VIP</Text>
+            <Text style={styles.menuText}>Ví và nạp tiền</Text>
             <Text style={styles.menuArrow}>›</Text>
           </TouchableOpacity>
         )}
@@ -266,6 +279,7 @@ export default function ProfileScreen({
             value={editName}
             onChangeText={setEditName}
             placeholder="Họ tên"
+            maxLength={100}
           />
           <TextInput
             style={styles.editInput}
@@ -273,6 +287,7 @@ export default function ProfileScreen({
             onChangeText={setEditPhone}
             placeholder="Số điện thoại"
             keyboardType="phone-pad"
+            maxLength={15}
           />
           <TouchableOpacity style={styles.saveButton} onPress={saveProfile}>
             <Text style={{ color: "white", fontWeight: "700" }}>
@@ -284,22 +299,19 @@ export default function ProfileScreen({
 
       {user?.role === "LANDLORD" && (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Tài khoản chủ trọ</Text>
-          {!isVerified ? (
-            <TouchableOpacity style={styles.saveButton} onPress={onVerifyPress}>
-              <Text style={{ color: "white", fontWeight: "700" }}>
-                Xác thực tài khoản để mở VIP
-              </Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={onOpenPaymentSimulation}
-            >
-              <Text style={{ color: "white", fontWeight: "700" }}>
-                {isVip ? "Quản lý gói VIP" : "Đăng ký VIP miễn phí (dev)"}
-              </Text>
-            </TouchableOpacity>
+          <Text style={styles.sectionTitle}>Gói VIP</Text>
+          <TouchableOpacity
+            style={styles.saveButton}
+            onPress={onOpenVipPackages}
+          >
+            <Text style={{ color: "white", fontWeight: "700" }}>
+              {isVip ? "Xem gói và gia hạn VIP" : "Xem và đăng ký gói VIP"}
+            </Text>
+          </TouchableOpacity>
+          {!isVerified && (
+            <Text style={styles.userEmail}>
+              Cần xác minh KYC trước khi thanh toán gói VIP.
+            </Text>
           )}
         </View>
       )}

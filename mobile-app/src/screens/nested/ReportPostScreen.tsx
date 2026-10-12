@@ -15,9 +15,8 @@ import { createReport } from "../../services/api";
 interface Props {
   onBack: () => void;
   postId: number;
-  userId: number;
 }
-export default function ReportPostScreen({ onBack, postId, userId }: Props) {
+export default function ReportPostScreen({ onBack, postId }: Props) {
   const [reason, setReason] = useState("Lừa đảo");
   const [description, setDescription] = useState("");
   const [evidenceImage, setEvidenceImage] = useState<string | null>(null);
@@ -40,13 +39,21 @@ export default function ReportPostScreen({ onBack, postId, userId }: Props) {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
-      quality: 0.85,
+      quality: 0.65,
+      base64: true,
       allowsEditing: true,
     });
     if (!result.canceled && result.assets[0]?.base64) {
-      setEvidenceImage(
-        `data:${result.assets[0].mimeType || "image/jpeg"};base64,${result.assets[0].base64}`,
-      );
+      if (result.assets[0].base64.length * 0.75 > 5 * 1024 * 1024) {
+        Alert.alert("Ảnh quá lớn", "Ảnh chứng minh cần nhỏ hơn 5 MB.");
+        return;
+      }
+      const mimeType = result.assets[0].mimeType || "image/jpeg";
+      if (!["image/jpeg", "image/png", "image/webp"].includes(mimeType)) {
+        Alert.alert("Định dạng không hỗ trợ", "Chọn ảnh JPG, PNG hoặc WebP.");
+        return;
+      }
+      setEvidenceImage(`data:${mimeType};base64,${result.assets[0].base64}`);
     }
   };
 
@@ -55,7 +62,6 @@ export default function ReportPostScreen({ onBack, postId, userId }: Props) {
     try {
       const result = await createReport({
         post_id: postId,
-        reporter_id: userId,
         reason,
         description: description.trim() || undefined,
         evidence_image_url: evidenceImage || undefined,
@@ -113,6 +119,7 @@ export default function ReportPostScreen({ onBack, postId, userId }: Props) {
           onChangeText={setDescription}
           placeholder="Thêm chi tiết nếu cần"
           multiline
+          maxLength={1000}
           style={[styles.input, styles.note]}
           placeholderTextColor="#9AAAB0"
         />
@@ -123,7 +130,7 @@ export default function ReportPostScreen({ onBack, postId, userId }: Props) {
           ) : (
             <>
               <Text style={styles.uploadIcon}>＋</Text>
-              <Text style={styles.uploadText}>Thêm ảnh hoặc video</Text>
+              <Text style={styles.uploadText}>Thêm ảnh chứng minh</Text>
             </>
           )}
         </TouchableOpacity>

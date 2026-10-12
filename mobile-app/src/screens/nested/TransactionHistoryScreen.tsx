@@ -79,7 +79,12 @@ export default function TransactionHistoryScreen({ onBack, userId }: Props) {
         <Text style={styles.amount}>
           {item.amount.toLocaleString("vi-VN")} đ
         </Text>
-        <Text style={styles.meta}>Phương thức: {item.payment_method}</Text>
+        <Text style={styles.meta}>
+          Phương thức:{" "}
+          {item.payment_method === "MOCK_BANK"
+            ? "Ngân hàng mô phỏng (dev)"
+            : item.payment_method}
+        </Text>
         <Text style={styles.meta}>Mã giao dịch: {item.transaction_code}</Text>
         <Text style={styles.meta}>
           Ngày: {new Date(item.created_at).toLocaleString("vi-VN")}

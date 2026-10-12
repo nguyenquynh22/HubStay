@@ -43,4 +43,12 @@ const uploadBase64Image = async (dataUri, folder) => {
   return secure_url;
 };
 
-module.exports = { uploadBase64Image };
+const deleteImageByUrl = async (url) => {
+  if (typeof url !== "string") return;
+  const match = /\/image\/upload\/(?:v\d+\/)?(.+)$/.exec(url);
+  if (!match) return;
+  const publicId = decodeURIComponent(match[1]).replace(/\.[^/.]+$/, "");
+  await configured().uploader.destroy(publicId, { resource_type: "image" });
+};
+
+module.exports = { uploadBase64Image, deleteImageByUrl };

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import QRCode from "react-native-qrcode-svg";
 import {
   ActivityIndicator,
   Alert,
@@ -13,30 +14,64 @@ import {
 import {
   createTopUp,
   getUserById,
+  getTransactionsByUser,
   simulateTopUpSuccess,
 } from "../../services/api";
 
 interface Props {
   onBack?: () => void;
   onOpenVip?: () => void;
+  onOpenTransactionHistory?: () => void;
   userId: number;
 }
 
-const presets = [100000, 500000, 1000000];
+const presets = [50000, 100000, 200000];
+type PendingTopUp = {
+  transaction_id: number;
+  transaction_code: string;
+  amount: number;
+  mock_payment_enabled: boolean;
+};
 
 export default function PaymentSimulationScreen({
   onBack,
   onOpenVip,
+  onOpenTransactionHistory,
   userId,
 }: Props) {
-  const [amount, setAmount] = useState("500000");
+  const [amount, setAmount] = useState("100000");
   const [balance, setBalance] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [pendingTopUp, setPendingTopUp] = useState<PendingTopUp | null>(null);
+  const [accountName, setAccountName] = useState("");
+  const [accountRole, setAccountRole] = useState("");
 
   const refreshBalance = async () => {
     try {
-      const response = await getUserById(userId);
-      setBalance(Number(response.data?.wallet_balance || 0));
+      const [userResponse, transactionResponse] = await Promise.all([
+        getUserById(userId),
+        getTransactionsByUser(userId),
+      ]);
+      setBalance(Number(userResponse.data?.wallet_balance || 0));
+      setAccountName(userResponse.data?.full_name || "Người dùng HubStay");
+      setAccountRole(userResponse.data?.role || "");
+      const pending = (transactionResponse.data || []).find(
+        (item: any) =>
+          item.transaction_type === "TOP_UP" &&
+          item.payment_method === "MOCK_BANK" &&
+          item.status === "PENDING",
+      );
+      setPendingTopUp(
+        pending
+          ? {
+              transaction_id: Number(pending.transaction_id),
+              transaction_code: pending.transaction_code,
+              amount: Number(pending.amount),
+              mock_payment_enabled:
+                transactionResponse.mock_payment_enabled === true,
+            }
+          : null,
+      );
     } catch (error) {
       console.error("Không tải được số dư ví:", error);
     }
@@ -55,11 +90,13 @@ export default function PaymentSimulationScreen({
     setLoading(true);
     try {
       const created = await createTopUp(userId, value);
-      await simulateTopUpSuccess(created.data.transaction_id);
-      await refreshBalance();
+      setPendingTopUp({
+        ...created.data,
+        mock_payment_enabled: created.mock_payment_enabled === true,
+      });
       Alert.alert(
-        "Nạp tiền thành công",
-        `${value.toLocaleString("vi-VN")} đ đã được cộng vào ví demo.`,
+        "Đã tạo giao dịch",
+        "Giao dịch đang chờ xác nhận thanh toán.",
       );
     } catch (error: any) {
       Alert.alert(
@@ -71,6 +108,45 @@ export default function PaymentSimulationScreen({
       setLoading(false);
     }
   };
+
+  const confirmMockPayment = async () => {
+    if (!pendingTopUp?.mock_payment_enabled) return;
+    setLoading(true);
+    try {
+      await simulateTopUpSuccess(pendingTopUp.transaction_id);
+      await refreshBalance();
+      Alert.alert(
+        "Bước 4 — Ví đã được cộng tiền",
+        `${pendingTopUp.amount.toLocaleString("vi-VN")} đ đã được cộng vào ví demo. Đây không phải giao dịch ngân hàng thật.`,
+        [
+          { text: "Đóng", style: "cancel" },
+          { text: "Xem lịch sử", onPress: onOpenTransactionHistory },
+        ],
+      );
+      setPendingTopUp(null);
+    } catch (error: any) {
+      Alert.alert(
+        "Chưa xác nhận được",
+        error?.response?.data?.message || "Giao dịch vẫn đang chờ xử lý.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const demoAccountNumber = pendingTopUp
+    ? `DEMO-${String(pendingTopUp.transaction_id).padStart(6, "0")}`
+    : "";
+  const demoQrPayload = pendingTopUp
+    ? [
+        "HUBSTAY DEMO ONLY - NOT A REAL PAYMENT",
+        "Bank: HubStay Demo Bank",
+        `Demo account: ${demoAccountNumber}`,
+        `Account holder: ${accountName}`,
+        `Amount: ${pendingTopUp.amount} VND`,
+        `Transfer note: ${pendingTopUp.transaction_code}`,
+      ].join("\n")
+    : "";
 
   return (
     <SafeAreaView style={styles.container}>
@@ -87,10 +163,15 @@ export default function PaymentSimulationScreen({
             {balance.toLocaleString("vi-VN")} đ
           </Text>
         </View>
-        <Text style={styles.section}>NẠP TIỀN THỬ NGHIỆM</Text>
+        <Text style={styles.section}>NẠP TIỀN VÀO VÍ</Text>
+        <Text style={styles.stepTitle}>Bước 1 — Nhập số tiền</Text>
         <Text style={styles.note}>
-          Giao dịch được mô phỏng và chỉ khả dụng khi backend chạy ở môi trường
-          phát triển.
+          Ví dụ: 50.000 đ, 100.000 đ, 200.000 đ hoặc nhập số tiền khác.
+        </Text>
+        <Text style={styles.note}>
+          Chưa kết nối ngân hàng thật. Bản demo chỉ cộng tiền sau khi máy chủ
+          bật mô phỏng thanh toán; chuyển khoản thật cần xác nhận từ webhook
+          ngân hàng/cổng thanh toán.
         </Text>
         <View style={styles.presets}>
           {presets.map((value) => (
@@ -121,19 +202,73 @@ export default function PaymentSimulationScreen({
           placeholder="Số tiền khác (VNĐ)"
         />
         <TouchableOpacity
-          disabled={loading}
+          disabled={loading || !!pendingTopUp}
           onPress={topUp}
           style={styles.button}
         >
           {loading ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.buttonText}>Nạp vào ví demo</Text>
+            <Text style={styles.buttonText}>Tạo giao dịch nạp tiền</Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={onOpenVip} style={styles.vipButton}>
-          <Text style={styles.vipText}>Xem gói VIP chủ trọ</Text>
-        </TouchableOpacity>
+        {pendingTopUp && (
+          <View style={styles.pendingBox}>
+            <Text style={styles.pendingTitle}>Bước 2 — Hiện QR demo</Text>
+            <Text style={styles.note}>
+              {pendingTopUp.amount.toLocaleString("vi-VN")} đ · Mã:{" "}
+              {pendingTopUp.transaction_code}
+            </Text>
+            <View style={styles.qrFrame}>
+              <QRCode value={demoQrPayload} size={184} />
+            </View>
+            <Text style={styles.qrWarning}>
+              QR MÔ PHỎNG — KHÔNG PHẢI THANH TOÁN THẬT
+            </Text>
+            <View style={styles.transferDetails}>
+              <Text style={styles.detailLine}>
+                Ngân hàng: HubStay Demo Bank
+              </Text>
+              <Text style={styles.detailLine}>
+                Số tài khoản: {demoAccountNumber}
+              </Text>
+              <Text style={styles.detailLine}>
+                Tên chủ tài khoản: {accountName}
+              </Text>
+              <Text style={styles.detailLine}>
+                Số tiền: {pendingTopUp.amount.toLocaleString("vi-VN")} đ
+              </Text>
+              <Text style={styles.detailLine}>
+                Nội dung: {pendingTopUp.transaction_code}
+              </Text>
+            </View>
+            {pendingTopUp.mock_payment_enabled ? (
+              <TouchableOpacity
+                disabled={loading}
+                onPress={confirmMockPayment}
+                style={styles.button}
+              >
+                {loading ? (
+                  <ActivityIndicator color="white" />
+                ) : (
+                  <Text style={styles.buttonText}>
+                    Bước 3 — Mô phỏng chuyển thành công
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.note}>
+                Máy chủ chưa bật mô phỏng. Không nạp tiền thật vào giao dịch
+                này.
+              </Text>
+            )}
+          </View>
+        )}
+        {accountRole === "LANDLORD" && (
+          <TouchableOpacity onPress={onOpenVip} style={styles.vipButton}>
+            <Text style={styles.vipText}>Xem gói VIP chủ trọ</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -166,6 +301,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   note: { color: "#64748B", lineHeight: 20 },
+  stepTitle: {
+    marginTop: 14,
+    marginBottom: 6,
+    color: "#1E293B",
+    fontWeight: "700",
+  },
   presets: { flexDirection: "row", gap: 8, marginTop: 18 },
   preset: {
     flex: 1,
@@ -208,4 +349,35 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   vipText: { color: "#00685f", fontWeight: "700" },
+  pendingBox: {
+    marginTop: 16,
+    padding: 14,
+    backgroundColor: "white",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#D97706",
+    gap: 8,
+  },
+  pendingTitle: { color: "#92400E", fontWeight: "700" },
+  qrFrame: {
+    alignSelf: "center",
+    padding: 12,
+    backgroundColor: "white",
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    borderRadius: 8,
+  },
+  qrWarning: {
+    alignSelf: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    color: "#7C2D12",
+    backgroundColor: "#FFEDD5",
+    borderRadius: 12,
+    fontSize: 10,
+    fontWeight: "800",
+    textAlign: "center",
+  },
+  transferDetails: { gap: 5, paddingTop: 4 },
+  detailLine: { color: "#334155", fontSize: 13, lineHeight: 19 },
 });

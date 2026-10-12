@@ -8,11 +8,16 @@ module.exports = {
   createOrGet: async (req, res, next) => {
     try {
       const postId = asId(req.body.post_id),
-        tenantId = asId(req.body.tenant_id);
+        tenantId = res.locals.user.userId;
       if (!Number.isInteger(postId) || !Number.isInteger(tenantId))
         return res.status(400).json({
           success: false,
           message: "post_id và tenant_id không hợp lệ",
+        });
+      if (req.body.tenant_id && asId(req.body.tenant_id) !== tenantId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể tạo cuộc trò chuyện thay cho tài khoản khác",
         });
       const [post, tenant] = await Promise.all([
         Posts.getById(postId),
@@ -24,12 +29,10 @@ module.exports = {
           message: "Không tìm thấy bài đăng hoặc người dùng",
         });
       if (post.status !== "AVAILABLE")
-        return res
-          .status(409)
-          .json({
-            success: false,
-            message: "Bài đăng đã đóng và không nhận thêm cuộc trò chuyện",
-          });
+        return res.status(409).json({
+          success: false,
+          message: "Bài đăng đã đóng và không nhận thêm cuộc trò chuyện",
+        });
       if (Number(post.author_id) === tenantId)
         return res.status(400).json({
           success: false,
@@ -52,6 +55,7 @@ module.exports = {
           ...conversation.toObject(),
           post_title: post.title,
           peer_name: post.author_name,
+          post_status: post.status,
           enable_booking: Number(post.enable_booking) === 1,
         },
       });
@@ -61,7 +65,12 @@ module.exports = {
   },
   list: async (req, res, next) => {
     try {
-      const userId = asId(req.params.userId);
+      const userId = res.locals.user.userId;
+      if (asId(req.params.userId) !== userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem cuộc trò chuyện của tài khoản khác",
+        });
       const conversations = await Conversation.find({
         $or: [{ tenant_id: userId }, { landlord_id: userId }],
       })
@@ -77,6 +86,7 @@ module.exports = {
             ...c,
             post_title: post?.title || "Bài đăng đã đóng",
             peer_name: peer?.full_name || "Người dùng",
+            post_status: post?.status || "CLOSED",
             enable_booking: Number(post?.enable_booking) === 1,
           };
         }),
@@ -88,8 +98,13 @@ module.exports = {
   },
   messages: async (req, res, next) => {
     try {
-      const userId = asId(req.query.user_id),
+      const userId = res.locals.user.userId,
         conversation = await Conversation.findById(req.params.id).lean();
+      if (req.query.user_id && asId(req.query.user_id) !== userId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể xem tin nhắn bằng tài khoản khác",
+        });
       if (!conversation)
         return res
           .status(404)

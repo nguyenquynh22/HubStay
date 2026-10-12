@@ -11,12 +11,27 @@ export const registerAccount = async (payload: {
   phone?: string;
   password: string;
   role: "STUDENT" | "WORKER" | "LANDLORD";
-}) => (await api.post("/users", payload)).data;
+}) => (await api.post("/auth/register", payload)).data;
+
+export const verifyRegistrationOtp = async (email: string, otp: string) =>
+  (await api.post("/auth/register/verify-otp", { email, otp })).data;
+
+export const resendRegistrationOtp = async (email: string) =>
+  (await api.post("/auth/register/resend-otp", { email })).data;
 
 export const loginAccount = async (payload: {
   email: string;
   password: string;
 }) => (await api.post("/auth/login", payload)).data;
+
+export const requestPasswordResetOtp = async (email: string) =>
+  (await api.post("/auth/forgot-password", { email })).data;
+
+export const resetPassword = async (payload: {
+  email: string;
+  otp: string;
+  new_password: string;
+}) => (await api.post("/auth/reset-password", payload)).data;
 
 export interface AdministrativeUnit {
   code: number;
@@ -33,6 +48,14 @@ export const getPostsByUserId = async (
   userId: number,
   sort: "newest" | "oldest" = "newest",
 ) => (await api.get(`/posts/user/${userId}`, { params: { sort } })).data;
+export const updatePost = async (
+  postId: number,
+  payload: { title: string; description: string; price: number },
+) => (await api.put(`/posts/${postId}`, payload)).data;
+export const setPostVisibility = async (
+  postId: number,
+  status: "AVAILABLE" | "HIDDEN",
+) => (await api.patch(`/posts/${postId}/visibility`, { status })).data;
 export const getUserById = async (userId: number) =>
   (await api.get(`/users/${userId}`)).data;
 export const updateUser = async (
@@ -70,11 +93,14 @@ export const getNearbyPosts = async (landmarkId: number, radiusKm = 10) =>
     })
   ).data;
 export const searchPosts = async (filters: {
+  keyword?: string;
   province_code?: number;
   district_code?: number;
   ward_code?: number;
   landmark_id?: number;
   radius_km?: number | "all";
+  page?: number;
+  limit?: number;
 }) => (await api.get("/posts/search", { params: filters })).data;
 export const getSavedPosts = async (userId: number) =>
   (await api.get(`/saved_posts/user/${userId}`)).data;
@@ -84,7 +110,6 @@ export const createPost = async (payload: Record<string, unknown>) =>
   (await api.post("/posts", payload, { timeout: 120000 })).data;
 export const createReport = async (payload: {
   post_id: number;
-  reporter_id: number;
   reason: string;
   description?: string;
   evidence_image_url?: string;
@@ -130,6 +155,8 @@ export const simulateTopUpSuccess = async (transactionId: number) =>
   (await api.post(`/transactions/dev/${transactionId}/simulate-success`)).data;
 export const getVipPackages = async () =>
   (await api.get("/subscriptions/packages")).data;
+export const getSubscriptionsByUser = async (userId: number) =>
+  (await api.get(`/subscriptions/user/${userId}`)).data;
 export const purchaseVip = async (userId: number, package_name: string) =>
   (await api.post("/subscriptions/purchase", { user_id: userId, package_name }))
     .data;
@@ -155,13 +182,21 @@ export const markNotificationRead = async (
   ).data;
 export const markNotificationsRead = async (userId: number) =>
   (await api.patch(`/notifications/user/${userId}/read-all`)).data;
+export const deleteAllNotifications = async (userId: number) =>
+  (await api.delete(`/notifications/user/${userId}`)).data;
+export const deleteNotification = async (notificationId: number) =>
+  (await api.delete(`/notifications/${notificationId}`)).data;
+export const deleteSelectedNotifications = async (
+  userId: number,
+  notificationIds: number[],
+) =>
+  (
+    await api.delete(`/notifications/user/${userId}/selected`, {
+      data: { notification_ids: notificationIds },
+    })
+  ).data;
 export const getRentalRequests = async (userId: number) =>
   (await api.get(`/rental-requests/user/${userId}`)).data;
-export const createRentalRequest = async (payload: {
-  post_id: number;
-  tenant_id: number;
-  note?: string;
-}) => (await api.post("/rental-requests", payload)).data;
 export const updateRentalRequest = async (
   requestId: number,
   actor_id: number,
@@ -176,6 +211,8 @@ export const updateRentalRequest = async (
 export const markPostRented = async (postId: number, actor_id: number) =>
   (await api.post(`/rental-requests/post/${postId}/rent-out`, { actor_id }))
     .data;
+export const reopenPost = async (postId: number, actor_id: number) =>
+  (await api.post(`/rental-requests/post/${postId}/reopen`, { actor_id })).data;
 export const getTenantAppointments = async (
   userId: number,
   sort: "newest" | "oldest" = "newest",
@@ -200,7 +237,7 @@ export const updateAppointment = async (
   appointmentId: number,
   payload: {
     actor_id: number;
-    status?: "CONFIRMED" | "CANCELLED";
+    status?: "CONFIRMED" | "REJECTED" | "CANCELLED";
     appointment_date?: string;
     appointment_time?: string;
     note?: string;

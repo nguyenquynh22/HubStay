@@ -1,4 +1,9 @@
 ﻿const db = require("../common/db");
+const {
+  sortRecommendedPosts,
+  getHomePageLimit,
+} = require("../lib/home-recommendations");
+const { buildKeywordConditions } = require("../lib/post-search");
 
 const fs = require("fs/promises");
 const path = require("path");
@@ -123,34 +128,49 @@ class postsRepository {
       throw invalidPostInput("Tổng dung lượng ảnh không được vượt quá 30 MB.");
     }
 
-    const [result] = await db.query(sql, values);
     const storedImages = [];
-    if (Array.isArray(data.images)) {
-      for (const [index, imageUrl] of data.images.entries()) {
-        if (!imageUrl) continue;
+    const uploadedImages = [];
+    const cloudinary = require("../services/cloudinary.service");
+    let connection;
+    try {
+      for (const imageUrl of payloadImages) {
         let storedUrl = imageUrl;
-        const dataUri =
-          typeof imageUrl === "string" &&
-          imageUrl.match(
-            /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
-          );
+        const dataUri = imageUrl.match(
+          /^data:(image\/(?:jpeg|png|webp));base64,([A-Za-z0-9+/=\r\n]+)$/,
+        );
         if (dataUri) {
-          const cloudinary = require("../services/cloudinary.service");
           storedUrl = await cloudinary.uploadBase64Image(imageUrl, "posts");
-        } else if (
-          typeof imageUrl !== "string" ||
-          imageUrl.startsWith("data:")
-        ) {
+          uploadedImages.push(storedUrl);
+        } else if (imageUrl.startsWith("data:")) {
           throw invalidPostInput("Định dạng ảnh không được hỗ trợ.");
         }
-        await db.query(
-          "INSERT INTO post_images (post_id, image_url, is_cover) VALUES (?, ?, ?)",
-          [result.insertId, storedUrl, index === 0 ? 1 : 0],
-        );
         storedImages.push(storedUrl);
       }
+
+      connection = await db.getConnection();
+      await connection.beginTransaction();
+      const [result] = await connection.query(sql, values);
+      for (const [index, imageUrl] of storedImages.entries()) {
+        await connection.query(
+          "INSERT INTO post_images (post_id, image_url, is_cover) VALUES (?, ?, ?)",
+          [result.insertId, imageUrl, index === 0 ? 1 : 0],
+        );
+      }
+      await connection.commit();
+      return { post_id: result.insertId, ...data, images: storedImages };
+    } catch (error) {
+      if (connection) {
+        try {
+          await connection.rollback();
+        } catch {}
+      }
+      await Promise.allSettled(
+        uploadedImages.map((imageUrl) => cloudinary.deleteImageByUrl(imageUrl)),
+      );
+      throw error;
+    } finally {
+      connection?.release();
     }
-    return { post_id: result.insertId, ...data, images: storedImages };
   }
 
   static async update(id, updateData) {
@@ -199,6 +219,45 @@ class postsRepository {
     values.push(id);
     const sql = `UPDATE posts SET ${fieldsToUpdate.join(", ")} WHERE post_id = ?`;
     const [result] = await db.query(sql, values);
+    return result.affectedRows > 0;
+  }
+
+  static async updateOwned(id, authorId, updateData) {
+    const aliases = {
+      address: "address_detail",
+    };
+    const normalized = Object.fromEntries(
+      Object.entries(updateData).map(([key, value]) => [
+        aliases[key] || key,
+        value,
+      ]),
+    );
+    const allowedFields = ["title", "description", "price", "address_detail"];
+    const entries = Object.entries(normalized).filter(([key]) =>
+      allowedFields.includes(key),
+    );
+    if (!entries.length) return false;
+    const assignments = entries.map(([key]) => `${key} = ?`).join(", ");
+    const [result] = await db.query(
+      `UPDATE posts SET ${assignments}, is_approved = 0 WHERE post_id = ? AND author_id = ?`,
+      [...entries.map(([, value]) => value), id, authorId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async setVisibility(id, authorId, status) {
+    const [result] = await db.query(
+      "UPDATE posts SET status = ? WHERE post_id = ? AND author_id = ? AND status IN ('AVAILABLE', 'HIDDEN')",
+      [status, id, authorId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async deleteOwned(id, authorId) {
+    const [result] = await db.query(
+      "DELETE FROM posts WHERE post_id = ? AND author_id = ?",
+      [id, authorId],
+    );
     return result.affectedRows > 0;
   }
 
@@ -261,7 +320,10 @@ class postsRepository {
     districtCode,
     wardCode,
     landmarkId,
+    keyword = "",
     radiusKm = 10,
+    page = 1,
+    limit = getHomePageLimit(),
   } = {}) {
     const conditions = ["p.status = 'AVAILABLE'", "p.is_approved = 1"];
     const values = [];
@@ -278,6 +340,9 @@ class postsRepository {
       conditions.push("p.ward_code = ?");
       values.push(wardCode);
     }
+    const keywordFilter = buildKeywordConditions(keyword);
+    conditions.push(...keywordFilter.conditions);
+    values.push(...keywordFilter.values);
 
     let landmark = null;
     if (landmarkId != null) {
@@ -296,6 +361,7 @@ class postsRepository {
              CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
       FROM posts p
       LEFT JOIN users u ON p.author_id = u.user_id
+      LEFT JOIN landmarks l ON p.landmark_id = l.landmark_id
       WHERE ${conditions.join(" AND ")}
     `;
     const [rows] = await db.query(sql, values);
@@ -322,16 +388,23 @@ class postsRepository {
           .map(({ exact_distance_km, ...post }) => post)
       : rows;
 
-    return results.sort((a, b) => {
-      if (Number(b.is_vip_active) !== Number(a.is_vip_active)) {
-        return Number(b.is_vip_active) - Number(a.is_vip_active);
-      }
-      if (Number(b.is_verified_active) !== Number(a.is_verified_active)) {
-        return Number(b.is_verified_active) - Number(a.is_verified_active);
-      }
-      if (landmark) return a.distance_km - b.distance_km;
-      return new Date(b.created_at) - new Date(a.created_at);
+    const orderedResults = sortRecommendedPosts(results, {
+      userArea: landmark ? null : null,
     });
+    const pageNumber = Math.max(1, Number.parseInt(page, 10) || 1);
+    const pageSize = Math.min(
+      Math.max(1, Number.parseInt(limit, 10) || getHomePageLimit()),
+      50,
+    );
+    const offset = (pageNumber - 1) * pageSize;
+
+    return {
+      items: orderedResults.slice(offset, offset + pageSize),
+      page: pageNumber,
+      limit: pageSize,
+      total: orderedResults.length,
+      hasMore: offset + pageSize < orderedResults.length,
+    };
   }
 
   static async getDistanceToPost({ postId, landmarkId }) {

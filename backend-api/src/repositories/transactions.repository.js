@@ -54,7 +54,7 @@ class TransactionsRepository {
     return { transaction_id: result.insertId, ...data };
   }
 
-  static async completeTopUp(id) {
+  static async completeTopUp(id, userId) {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
@@ -66,6 +66,18 @@ class TransactionsRepository {
       if (!transaction) {
         await connection.rollback();
         return { error: "TRANSACTION_NOT_FOUND" };
+      }
+      if (Number(transaction.user_id) !== Number(userId)) {
+        await connection.rollback();
+        return { error: "FORBIDDEN" };
+      }
+      const [accountRows] = await connection.query(
+        "SELECT role FROM users WHERE user_id = ? FOR UPDATE",
+        [transaction.user_id],
+      );
+      if (accountRows[0]?.role !== "LANDLORD") {
+        await connection.rollback();
+        return { error: "INVALID_ROLE" };
       }
       if (transaction.transaction_type !== "TOP_UP") {
         await connection.rollback();
