@@ -8,6 +8,7 @@ const { buildKeywordConditions } = require("../lib/post-search");
 const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
+const PostImageModeration = require("../services/post_image_moderation.service");
 
 const invalidPostInput = (message) =>
   Object.assign(new Error(message), { code: "INVALID_POST_INPUT" });
@@ -48,7 +49,7 @@ class postsRepository {
              CASE WHEN COALESCE(u.is_verified, 0) = 1 THEN 1 ELSE 0 END AS is_verified_active
       FROM posts p
       LEFT JOIN users u ON p.author_id = u.user_id
-      WHERE p.post_id = ?
+      WHERE p.post_id = ? AND p.status = 'AVAILABLE' AND p.is_approved = 1
     `;
     const [rows] = await db.query(sql, [id]);
     return rows[0] || null;
@@ -70,31 +71,6 @@ class postsRepository {
   }
 
   static async create(data) {
-    const sql = `
-      INSERT INTO posts (
-        author_id, landmark_id, title, description, post_type, price, area, address_detail,
-        province_code, district_code, ward_code, post_lat, post_lng,
-        enable_booking, status, is_approved
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'AVAILABLE', 1)
-    `;
-
-    const values = [
-      data.user_id ?? data.author_id,
-      data.landmark_id || null,
-      data.title,
-      data.description || null,
-      data.post_type || data.type || "RENTAL",
-      data.price || null,
-      data.area ?? null,
-      data.address || data.address_detail || "",
-      data.province_code ?? null,
-      data.district_code ?? null,
-      data.ward_code ?? null,
-      data.latitude ?? data.post_lat ?? null,
-      data.longitude ?? data.post_lng ?? null,
-      data.enable_booking ?? 1,
-    ];
-
     const payloadImages = Array.isArray(data.images)
       ? data.images.filter(Boolean)
       : [];
@@ -122,12 +98,80 @@ class postsRepository {
         totalImageBytes += imageBytes;
       } else if (/\.(mp4|mov|m4v|webm|avi)(?:[?#].*)?$/i.test(imageUrl)) {
         throw invalidPostInput("Video không được hỗ trợ trong bài đăng.");
+      } else if (!PostImageModeration.isCloudinaryImageUrl(imageUrl)) {
+        const error = new Error(
+          "Không thể kiểm duyệt ảnh này. Chỉ chấp nhận ảnh tải trực tiếp hoặc ảnh Cloudinary hợp lệ.",
+        );
+        error.statusCode = 400;
+        throw error;
       }
     }
     if (totalImageBytes > 30 * 1024 * 1024) {
       throw invalidPostInput("Tổng dung lượng ảnh không được vượt quá 30 MB.");
     }
 
+    const imageModeration = await PostImageModeration.inspectPostImages(
+      payloadImages,
+    );
+    if (imageModeration.blocked) {
+      const category =
+        imageModeration.category ??
+        imageModeration.findings?.[0]?.category ??
+        "MANUAL_REVIEW_REQUIRED";
+      const offTopicLabel = PostImageModeration.getVietnameseOffTopicLabel(
+        imageModeration.label,
+      );
+      const messages = {
+        OFF_TOPIC_IMAGE: `Ảnh "${offTopicLabel}" không liên quan đến bài đăng cho thuê. Vui lòng thay bằng ảnh phòng, nhà hoặc tiện ích.`,
+        ADULT_CONTENT:
+          "Ảnh có nội dung người lớn, không thể đăng bài. Vui lòng thay ảnh.",
+        SENSITIVE_CONTENT_SUSPECTED:
+          "Ảnh có thể chứa nội dung nhạy cảm, không thể đăng bài. Vui lòng thay ảnh.",
+        IMAGE_VERIFICATION_FAILED:
+          "Không thể xác minh ảnh lúc này. Bài đăng chưa được tạo; vui lòng thử lại sau.",
+        MANUAL_REVIEW_REQUIRED:
+          "Không thể xác minh ảnh lúc này. Bài đăng chưa được tạo; vui lòng thử lại sau.",
+      };
+      const error = new Error(
+        messages[category] ?? messages.MANUAL_REVIEW_REQUIRED,
+      );
+      error.statusCode = [
+        "IMAGE_VERIFICATION_FAILED",
+        "MANUAL_REVIEW_REQUIRED",
+      ].includes(category)
+        ? 503
+        : 400;
+      error.category = category;
+      error.findings = imageModeration.findings ?? [{ category }];
+      throw error;
+    }
+
+    const sql = `
+      INSERT INTO posts (
+        author_id, landmark_id, title, description, post_type, price, area, address_detail,
+        province_code, district_code, ward_code, post_lat, post_lng,
+        enable_booking, status, is_approved
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      data.user_id ?? data.author_id,
+      data.landmark_id || null,
+      data.title,
+      data.description || null,
+      data.post_type || data.type || "RENTAL",
+      data.price || null,
+      data.area ?? null,
+      data.address || data.address_detail || "",
+      data.province_code ?? null,
+      data.district_code ?? null,
+      data.ward_code ?? null,
+      data.latitude ?? data.post_lat ?? null,
+      data.longitude ?? data.post_lng ?? null,
+      data.enable_booking ?? 1,
+      "AVAILABLE",
+      1,
+    ];
     const storedImages = [];
     const uploadedImages = [];
     const cloudinary = require("../services/cloudinary.service");

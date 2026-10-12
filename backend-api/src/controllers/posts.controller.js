@@ -207,7 +207,13 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const userId = res.locals.user.userId;
+      const userId = Number(res.locals.user?.userId ?? res.locals.userId);
+      if (!Number.isInteger(userId) || userId < 1) {
+        return res.status(401).json({
+          success: false,
+          message: "Người dùng không hợp lệ hoặc chưa đăng nhập.",
+        });
+      }
       const requestedUserId = req.body.user_id ?? req.body.author_id;
       if (requestedUserId != null && Number(requestedUserId) !== userId) {
         return res.status(403).json({
@@ -222,6 +228,19 @@ module.exports = {
         return res.status(401).json({
           success: false,
           message: "Người dùng không hợp lệ hoặc chưa đăng nhập.",
+        });
+      }
+      if (user.status === "BANNED") {
+        return res.status(403).json({
+          success: false,
+          message: "Tài khoản đã bị khóa vĩnh viễn, không thể đăng bài.",
+        });
+      }
+      if (user.banned_until && new Date(user.banned_until) > new Date()) {
+        return res.status(403).json({
+          success: false,
+          message:
+            "Tài khoản đang bị tạm khóa quyền đăng bài. Vui lòng thử lại sau thời hạn hạn chế.",
         });
       }
       if (!validatePostTypeForRole(user.role, requestedPostType)) {
@@ -312,6 +331,9 @@ module.exports = {
         user_id: userId,
         author_id: userId,
       });
+      if (!newItem?.post_id) {
+        throw new Error("Không thể xác nhận bài đăng đã được tạo.");
+      }
       try {
         await Notifications.notify(
           userId,
@@ -363,12 +385,20 @@ module.exports = {
       }
       res.status(201).json({
         success: true,
-        message: "Created successfully",
+        message: "Ảnh đã qua kiểm duyệt tự động và bài đăng đã được công khai.",
         data: newItem,
       });
     } catch (err) {
       if (err.code === "INVALID_POST_INPUT") {
         return res.status(400).json({ success: false, message: err.message });
+      }
+      if (err.category) {
+        return res.status(err.statusCode ?? 400).json({
+          success: false,
+          message: err.message,
+          category: err.category,
+          findings: err.findings ?? [{ category: err.category }],
+        });
       }
       next(err);
     }

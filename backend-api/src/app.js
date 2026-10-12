@@ -41,7 +41,9 @@ app.use(
 app.get("/", (_req, res) => {
   res.json({
     success: true,
+    service: "HubStay API",
     message: "HubStay API đang hoạt động.",
+    api_prefix: "/api",
     health: "/api/health",
   });
 });
@@ -58,9 +60,6 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-app.get("/", (req, res) => {
-  res.json({ success: true, service: "HubStay API", api_prefix: "/api" });
-});
 app.get("/health", (req, res) => {
   res.json({ success: true, status: "ok" });
 });

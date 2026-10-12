@@ -28,6 +28,7 @@ export default function App() {
   );
   const [selectedPost, setSelectedPost] = useState<any>(null);
   const [selectedConversation, setSelectedConversation] = useState<any>(null);
+  const [reportNotice, setReportNotice] = useState("");
   const [bookingReturnScreen, setBookingReturnScreen] = useState<
     "POST_DETAIL" | "CHAT_DETAIL"
   >("POST_DETAIL");
@@ -111,9 +112,14 @@ export default function App() {
       ) : currentNestedScreen === "POST_DETAIL" ? (
         <PostDetailScreen
           post={selectedPost}
+          reportNotice={reportNotice}
+          onDismissReportNotice={() => setReportNotice("")}
           onBack={() => setCurrentNestedScreen(null)}
           userId={currentUserId}
-          onReport={() => setCurrentNestedScreen("REPORT")}
+          onReport={() => {
+            setReportNotice("");
+            setCurrentNestedScreen("REPORT");
+          }}
           onOpenChat={openPostChat}
           onNavigateToBooking={() => {
             setBookingReturnScreen("POST_DETAIL");
@@ -139,8 +145,13 @@ export default function App() {
         />
       ) : currentNestedScreen === "REPORT" ? (
         <ReportPostScreen
-          onBack={() => setCurrentNestedScreen("POST_DETAIL")}
           postId={Number(selectedPost?.post_id)}
+          reporterId={currentUserId}
+          onBack={() => setCurrentNestedScreen("POST_DETAIL")}
+          onSubmitted={(message) => {
+            setReportNotice(message);
+            setCurrentNestedScreen("POST_DETAIL");
+          }}
         />
       ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
         <TransactionHistoryScreen
@@ -204,6 +215,7 @@ export default function App() {
           onOpenVipPackages={() => setCurrentNestedScreen("VIP_PACKAGES")}
           onSelectPost={(post) => {
             setSelectedPost(post);
+            setReportNotice("");
             setCurrentNestedScreen("POST_DETAIL");
           }}
           onOpenChat={(conversation) => {

@@ -12,12 +12,27 @@ const parseId = (value) => {
 };
 const allowedReasons = new Set([
   "Lừa đảo",
-  "Báo giá sai",
-  "Phòng không đúng ảnh",
-  "Nội dung không phù hợp",
+  "Thông tin sai sự thật",
+  "Trọ không tồn tại",
+  "Khác",
 ]);
 
 module.exports = {
+  getEligibility: async (req, res, next) => {
+    try {
+      const postId = Number(req.params.postId);
+      const reporterId = Number(res.locals.user?.userId ?? res.locals.userId);
+      if (!Number.isInteger(postId) || postId < 1) {
+        return res.status(400).json({
+          success: false,
+          message: 'Không xác định được bài đăng cần báo cáo.',
+        });
+      }
+      const eligibility = await Repo.getReportEligibility(postId, reporterId);
+      return res.json({ success: true, data: eligibility });
+    } catch (err) { next(err); }
+  },
+
   getAll: async (req, res, next) => {
     try {
       const data = await Repo.getAll();
@@ -41,7 +56,7 @@ module.exports = {
   create: async (req, res, next) => {
     try {
       const postId = parseId(req.body.post_id);
-      const reporterId = res.locals.user.userId;
+      const reporterId = Number(res.locals.user?.userId ?? res.locals.userId);
       const reason =
         typeof req.body.reason === "string" ? req.body.reason.trim() : "";
       const description =
@@ -94,8 +109,8 @@ module.exports = {
         });
       }
 
-      let evidenceImageUrl = null;
-      if (evidenceImage) {
+      let evidenceImageUrl = evidenceImage || null;
+      if (evidenceImage?.startsWith("data:")) {
         try {
           evidenceImageUrl = await uploadBase64Image(
             evidenceImage,

@@ -8,5 +8,6 @@ router.post("/register/resend-otp", controller.resendRegistrationOtp);
 router.post("/login", controller.login);
 router.post("/forgot-password", controller.forgotPassword);
 router.post("/reset-password", controller.resetPassword);
+router.post("/activate-account", controller.activateAccount);
 
 module.exports = router;

@@ -1,0 +1,62 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Check mobile backend tunnel",
+			"type": "shell",
+			"command": "curl.exe",
+			"args": [
+				"-i",
+				"--max-time",
+				"15",
+				"https://abacus-residence-festival.ngrok-free.dev/api/health"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Check ngrok API health",
+			"type": "shell",
+			"command": "curl.exe",
+			"args": [
+				"-i",
+				"--max-time",
+				"20",
+				"https://abacus-residence-festival.ngrok-free.dev/api/health"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Probe post endpoint reachability",
+			"type": "shell",
+			"command": "curl.exe",
+			"args": [
+				"-i",
+				"--max-time",
+				"20",
+				"-X",
+				"POST",
+				"https://abacus-residence-festival.ngrok-free.dev/api/posts",
+				"-H",
+				"Content-Type: application/json",
+				"-H",
+				"ngrok-skip-browser-warning: true",
+				"--data",
+				"{}"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		},
+		{
+			"label": "Probe post API endpoint",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"backend-api/.probe-post-endpoint.cjs"
+			],
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}

@@ -108,12 +108,17 @@ export const toggleSavedPost = async (userId: number, postId: number) =>
   (await api.post("/saved_posts", { user_id: userId, post_id: postId })).data;
 export const createPost = async (payload: Record<string, unknown>) =>
   (await api.post("/posts", payload, { timeout: 120000 })).data;
-export const createReport = async (payload: {
+export const createPostReport = async (payload: {
   post_id: number;
   reason: string;
-  description?: string;
-  evidence_image_url?: string;
+  description?: string | null;
+  evidence_image_url?: string | null;
 }) => (await api.post("/post_reports", payload)).data;
+export const getPostReportEligibility = async (postId: number) =>
+  (await api.get(`/post_reports/eligibility/${postId}`)).data;
+export const uploadReportEvidence = async (image: string) =>
+  (await api.post("/uploads/report-evidence", { image }, { timeout: 120000 }))
+    .data;
 export const createConversation = async (postId: number, tenantId: number) =>
   (
     await api.post("/chat/conversations", {

@@ -423,7 +423,7 @@ function UserDetailsPage({ id }: { id: string }) {
       </header>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500"><span>Mã người dùng</span><span className="rounded bg-slate-100 px-2 py-1 font-mono text-slate-700">{user.user_id}</span><span className={`rounded-full px-2.5 py-1 font-semibold ${isBanned ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>{statusLabels[user.status]}</span></div>
+        <div className="flex flex-wrap items-center gap-2 text-[12px] text-slate-500"><span>Mã người dùng</span><span className="rounded bg-slate-100 px-2 py-1 font-mono text-slate-700">{user.user_id}</span><span className={`rounded-full px-2.5 py-1 font-semibold ${isBanned ? "bg-rose-50 text-rose-700" : user.status === "WARNING" ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{statusLabels[user.status]}</span></div>
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={isSaving} onClick={() => { setError(""); if (isEditing) setSelectedRole(null); setIsEditing((current) => !current); }} className="rounded-lg border border-slate-200 px-3 py-2 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50">{isEditing ? "Đóng chỉnh sửa" : "Chỉnh sửa hồ sơ"}</button>
           <button type="button" disabled={isSaving} onClick={() => void toggleStatus()} className="rounded-lg border border-amber-200 px-3 py-2 text-[12px] font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50">{isBanned ? "Mở khóa tài khoản" : "Khóa tài khoản"}</button>
@@ -443,6 +443,7 @@ function UserDetailsPage({ id }: { id: string }) {
           </div>
           <dl className="space-y-3 pt-4 text-[12px]">
             <SummaryRow label="Trạng thái" value={statusLabels[user.status]} />
+            {Number(user.report_strike_count ?? 0) > 0 ? <SummaryRow label="Bài vi phạm đã xác nhận" value={`${user.report_strike_count} strike · ${user.ban_reason || "Có kết luận vi phạm trong quản lý báo cáo"}`} /> : null}
             <SummaryRow label="Xác thực" value={isVerified ? "Đã xác thực" : "Chưa xác thực"} />
             {isLandlord ? <div className="flex items-center justify-between gap-3"><dt className="text-slate-500">Gói</dt><dd><VIPStatusBadge status={isVip ? "VIP" : "STANDARD"} /></dd></div> : null}
             {isLandlord ? <SummaryRow label="VIP hết hạn" value={user.vip_expires_at ? inputDateTime(user.vip_expires_at).replace("T", " ") : "Chưa thiết lập"} /> : null}
@@ -483,7 +484,7 @@ function UserDetailsPage({ id }: { id: string }) {
             <div className="grid gap-3 sm:grid-cols-2">
               {isLandlord ? <TextField label="VIP hết hạn lúc" name="vip_expires_at" type="datetime-local" defaultValue={inputDateTime(user.vip_expires_at)} disabled={!isEditing} /> : null}
               <TextField label="Khóa đến" name="banned_until" type="datetime-local" defaultValue={inputDateTime(user.banned_until)} disabled={!isEditing} />
-              <TextField label="Lý do khóa" name="ban_reason" defaultValue={user.ban_reason ?? ""} disabled={!isEditing} />
+              <TextField label="Lý do cảnh cáo / hạn chế / khóa" name="ban_reason" defaultValue={user.ban_reason ?? ""} disabled={!isEditing} />
               <ReadField label="eKYC mới nhất" value={user.latest_verification ? `${user.latest_verification.status} · ${user.latest_verification.account_type}` : "Chưa có hồ sơ xác thực"} />
             </div>
             {user.latest_verification?.rejection_reason ? <p className="mt-3 text-[12px] text-rose-700">Lý do từ chối: {user.latest_verification.rejection_reason}</p> : null}
@@ -498,6 +499,53 @@ function UserDetailsPage({ id }: { id: string }) {
               <ReadField label="Tạo lúc" value={user.created_at} icon={<Clock3 className="h-4 w-4" />} />
               <ReadField label="Cập nhật gần nhất" value={user.updated_at ?? "Chưa có dữ liệu"} icon={<Clock3 className="h-4 w-4" />} />
             </div>
+          </section>
+
+          <section className="rounded-xl border border-slate-200 bg-white p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <SectionTitle number={4} title="Lịch sử báo cáo vi phạm" />
+              <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${Number(user.report_strike_count ?? 0) > 0 ? "bg-amber-50 text-amber-800" : "bg-slate-100 text-slate-600"}`}>
+                {user.report_strike_count ?? 0} strike đang hiệu lực
+              </span>
+            </div>
+            {user.violation_reports?.length ? (
+              <ul className="space-y-3">
+                {user.violation_reports.map((report) => {
+                  const statusText = report.decision_reversed
+                    ? "Đã hoàn tác kết luận"
+                    : report.status === "RESOLVED"
+                      ? "Đã xác nhận vi phạm"
+                      : report.status === "PENDING"
+                        ? "Đang chờ xử lý"
+                        : "Đã từ chối";
+                  const statusStyle = report.decision_reversed
+                    ? "bg-violet-50 text-violet-700"
+                    : report.status === "RESOLVED"
+                      ? "bg-rose-50 text-rose-700"
+                      : report.status === "PENDING"
+                        ? "bg-amber-50 text-amber-700"
+                        : "bg-slate-100 text-slate-600";
+                  return (
+                    <li key={report.report_id} className="rounded-lg border border-slate-200 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="font-semibold text-slate-800">{report.post_title || `Bài đăng #${report.post_id}`}</p>
+                          <p className="mt-1 text-[12px] text-slate-500">{report.created_at} · Lý do: {report.reason || "Không có lý do"}</p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${statusStyle}`}>{statusText}</span>
+                      </div>
+                      {report.description ? <p className="mt-2 whitespace-pre-wrap text-[12px] text-slate-600">{report.description}</p> : null}
+                      {report.reversal_note ? <p className="mt-2 rounded-md bg-violet-50 px-2.5 py-2 text-[12px] text-violet-800">{report.reversal_note}</p> : null}
+                      <Link href={`/reports?returnToReport=${report.report_id}`} className="mt-2 inline-flex text-[12px] font-semibold text-blue-700 hover:underline">
+                        Mở đúng báo cáo trong Quản lý báo cáo
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <p className="rounded-lg bg-slate-50 px-3 py-4 text-[13px] text-slate-500">Chưa có báo cáo nào liên quan đến bài đăng của tài khoản này.</p>
+            )}
           </section>
 
           {isEditing ? <div className="flex flex-wrap items-center justify-end gap-2">
