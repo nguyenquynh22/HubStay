@@ -438,26 +438,6 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ status, reason }),
     }),
-  posts: () => request<{ items: AdminPost[] }>("/admin/posts"),
-  createPost: (payload: AdminPostPayload & { author_id: number }) =>
-    request<{ success: boolean; id: number }>("/admin/posts", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updatePost: (
-    id: number,
-    payload: Partial<AdminPostPayload> & { is_approved?: boolean },
-  ) =>
-    request<{ success: boolean }>("/admin/posts/" + id, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  reports: () => request<{ items: AdminReport[] }>("/admin/reports"),
-  reviewReport: (id: number, status: "RESOLVED" | "DISMISSED") =>
-    request("/admin/reports/" + id, {
-      method: "PATCH",
-      body: JSON.stringify({ status }),
-    }),
   posts: async () => {
     const result = await request<{ items: AdminPost[] }>("/admin/posts");
     return {

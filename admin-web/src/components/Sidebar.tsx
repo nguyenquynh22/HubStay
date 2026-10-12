@@ -13,6 +13,7 @@ import {
   GraduationCap,
   LayoutDashboard,
   LogOut,
+  Package,
   WalletCards,
   Users,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const iconMap = {
   schools: GraduationCap,
   transactions: CreditCard,
   subscriptions: Crown,
+  vip: Package,
 } as const;
 
 export function Sidebar() {

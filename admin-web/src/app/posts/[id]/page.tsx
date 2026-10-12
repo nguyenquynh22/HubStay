@@ -1,11 +1,11 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Building2, Check, EyeOff, Pencil, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, EyeOff, Pencil, RotateCcw } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { PostImageWithFallback } from "@/components/PostImageWithFallback";
 import { ApiError, adminApi, type AdminPost, type AdminPostPayload } from "@/services/api";
 
 const statusLabels: Record<string, string> = {
@@ -136,10 +136,10 @@ export default function PostDetailsPage() {
           {post.imageUrls?.length ? (
             <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-2">
               {post.imageUrls.map((url, index) => (
-                <Image key={`${url}-${index}`} src={url} alt={`Ảnh bài đăng ${index + 1}`} width={1200} height={700} unoptimized className="h-64 w-full rounded-lg object-contain" />
+                <PostImageWithFallback key={`${url}-${index}`} src={url} alt={`Ảnh bài đăng ${index + 1}`} className="h-64 w-full rounded-lg" imageClassName="object-contain" iconClassName="h-12 w-12 text-slate-300" />
               ))}
             </div>
-          ) : post.imageUrl ? <Image src={post.imageUrl} alt="" width={1200} height={700} unoptimized className="h-64 w-full object-cover" /> : <div className="flex h-48 items-center justify-center bg-slate-50"><Building2 className="h-12 w-12 text-slate-300" /></div>}
+          ) : <PostImageWithFallback src={post.imageUrl} alt="" className="h-48 w-full bg-slate-50" iconClassName="h-12 w-12 text-slate-300" />}
           <div className="space-y-5 p-5">
             <div><p className="text-[11px] font-medium text-slate-500">BÀI ĐĂNG #{post.id}</p>{!isEditing ? <h1 className="mt-1 text-[24px] font-bold leading-tight text-slate-900">{post.title}</h1> : null}</div>
             {post.imageReviewRequired ? <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">

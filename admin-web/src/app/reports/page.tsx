@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Check, CheckCircle2, Clock3, ExternalLink, Search, ShieldAlert, X } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { PostImageWithFallback } from "@/components/PostImageWithFallback";
 import { ApiError, adminApi, resolveMediaUrl, type AdminReport } from "@/services/api";
 
 const statusLabels: Record<string, string> = {
@@ -415,7 +416,7 @@ export default function ReportsPage() {
                   <div><dt className="text-slate-500">Ngày đăng</dt><dd className="mt-1 text-slate-800">{selected.post.createdAt ? formatDate(selected.post.createdAt) : "Không rõ"}</dd></div>
                   <div className="sm:col-span-2"><dt className="text-slate-500">Nội dung bài đăng</dt><dd className="mt-1 max-h-36 overflow-y-auto whitespace-pre-wrap text-slate-800">{selected.post.description || "Không có mô tả."}</dd></div>
                 </dl>
-                {selected.post.imageUrls?.length ? <div className="mt-4 flex gap-2 overflow-x-auto">{selected.post.imageUrls.map((url, index) => <a key={`${url}-${index}`} href={resolveMediaUrl(url)} target="_blank" rel="noreferrer" className="relative h-24 w-32 shrink-0 overflow-hidden rounded-lg border border-slate-200"><Image src={resolveMediaUrl(url)} alt={`Ảnh bài đăng ${index + 1}`} fill unoptimized className="object-cover" /></a>)}</div> : <p className="mt-3 text-xs text-slate-500">Bài đăng không có ảnh.</p>}
+                {selected.post.imageUrls?.length ? <div className="mt-4 flex gap-2 overflow-x-auto">{selected.post.imageUrls.map((url, index) => <a key={`${url}-${index}`} href={resolveMediaUrl(url)} target="_blank" rel="noreferrer" className="block shrink-0 rounded-lg border border-slate-200"><PostImageWithFallback src={resolveMediaUrl(url)} alt={`Ảnh bài đăng ${index + 1}`} className="h-24 w-32 rounded-lg" /></a>)}</div> : <PostImageWithFallback src={null} alt="" className="mt-4 h-24 w-32 rounded-lg border border-slate-200" />}
                 {selected.post.id ? <Link href={`/posts/${selected.post.id}?returnToReport=${selected.id}`} className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100"><ExternalLink className="h-3.5 w-3.5" />Mở bài đăng trong trang quản trị</Link> : null}
               </section>
 

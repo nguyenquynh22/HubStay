@@ -56,11 +56,12 @@ export default function VerificationPage() {
 
     let cancelled = false;
     const objectUrls: string[] = [];
-    const images: Array<{ kind: VerificationImageKind; available: boolean; url: string | null }> = [
+    const availableImages: Array<{ kind: VerificationImageKind; available: boolean; url: string | null }> = [
       { kind: "front", available: selectedApplication.frontImageAvailable, url: selectedApplication.frontCardUrl },
       { kind: "back", available: selectedApplication.backImageAvailable, url: selectedApplication.backCardUrl },
       { kind: "selfie", available: selectedApplication.selfieAvailable, url: null },
-    ].filter((image) => image.available || Boolean(image.url));
+    ];
+    const images = availableImages.filter((image) => image.available || Boolean(image.url));
 
     const initialState: Partial<Record<VerificationImageKind, VerificationImageState>> = {};
     for (const image of images) initialState[image.kind] = { status: "loading" };
