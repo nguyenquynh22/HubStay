@@ -195,12 +195,12 @@ export default function UsersPage() {
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[
             { label: "Sinh viên", value: summary?.students ?? 0, note: "Tài khoản sinh viên" },
             { label: "Chủ nhà trọ", value: summary?.landlords ?? 0, note: "Tài khoản cho thuê" },
             { label: "Chưa xác thực", value: summary?.unverified ?? 0, note: "Cần hoàn tất eKYC" },
-            { label: "Cảnh báo / bị khóa", value: summary?.restricted ?? 0, note: "Tài khoản cần lưu ý" },
+            { label: "Cảnh báo / bị khóa", value: summary?.restricted ?? 0, note: "Có cảnh cáo vi phạm hoặc đang bị khóa" },
           ].map((stat) => (
             <div key={stat.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-[12px] font-medium text-slate-500">{stat.label}</p>
@@ -340,9 +340,16 @@ export default function UsersPage() {
                     <td className="whitespace-nowrap px-4 py-3 text-[12px] text-slate-600">{user.role === "LANDLORD" ? formatVipExpiry(user.vip_expires_at) : <span aria-hidden="true" className="text-slate-300">—</span>}</td>
 
                     <td className="px-4 py-3">
-                      <span className={`inline-flex max-w-full items-center justify-center rounded-full px-3 py-1.5 text-center text-[12px] font-medium leading-4 ${statusStyles[user.status]}`}>
-                        {statusLabels[user.status]}
-                      </span>
+                      <div title={user.ban_reason ?? undefined}>
+                        <span className={`inline-flex max-w-full items-center justify-center rounded-full px-3 py-1.5 text-center text-[12px] font-medium leading-4 ${statusStyles[user.status]}`}>
+                          {statusLabels[user.status]}
+                        </span>
+                        {Number(user.report_strike_count ?? 0) > 0 ? (
+                          <p className="mt-1 text-[11px] font-medium text-amber-700">
+                            {formatCount(user.report_strike_count)} kết luận vi phạm
+                          </p>
+                        ) : null}
+                      </div>
                     </td>
 
                     <td className="px-4 py-3">

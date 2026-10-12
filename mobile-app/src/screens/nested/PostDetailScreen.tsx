@@ -18,6 +18,7 @@ import {
   resolveImageUrl,
   markPostRented,
   reopenPost,
+  getPostReportEligibility,
 } from "../../services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
@@ -30,6 +31,8 @@ interface Props {
   onReport?: () => void;
   onOpenChat: () => void;
   post?: any;
+  reportNotice?: string;
+  onDismissReportNotice?: () => void;
   userId: number;
 }
 
@@ -39,6 +42,8 @@ export default function PostDetailScreen({
   onReport,
   onOpenChat,
   post,
+  reportNotice,
+  onDismissReportNotice,
   userId,
 }: Props) {
   const currentPost = post
@@ -92,6 +97,87 @@ export default function PostDetailScreen({
   // 2. Interaction State
   const [isSaved, setIsSaved] = useState(false);
   const isOwnPost = Number(post?.author_id ?? post?.user_id) === Number(userId);
+  const [reportEligibility, setReportEligibility] = useState({
+    loading: true,
+    eligible: false,
+    checkFailed: false,
+    message: "Đang kiểm tra điều kiện báo cáo…",
+    postId: null as number | null,
+    userId: null as number | null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    const postId = Number(post?.post_id);
+    const currentUserId = Number(userId);
+    const checkEligibility = async () => {
+      setReportEligibility({
+        loading: true,
+        eligible: false,
+        checkFailed: false,
+        message: "Đang kiểm tra điều kiện báo cáo…",
+        postId,
+        userId: currentUserId,
+      });
+      if (!post?.post_id) {
+        setReportEligibility({
+          loading: false,
+          eligible: false,
+          checkFailed: false,
+          message: "Không xác định được bài đăng cần báo cáo.",
+          postId,
+          userId: currentUserId,
+        });
+        return;
+      }
+      if (!Number.isInteger(currentUserId) || currentUserId < 1) {
+        setReportEligibility({
+          loading: false,
+          eligible: false,
+          checkFailed: false,
+          message: "Bạn cần đăng nhập và có tương tác với bài đăng trước khi báo cáo.",
+          postId,
+          userId: currentUserId,
+        });
+        return;
+      }
+      try {
+        const response = await getPostReportEligibility(Number(post.post_id));
+        if (cancelled) return;
+        const eligibility = response?.data;
+        setReportEligibility({
+          loading: false,
+          eligible: eligibility?.eligible === true,
+          checkFailed: false,
+          message: eligibility?.message || "Không thể xác định điều kiện báo cáo.",
+          postId,
+          userId: currentUserId,
+        });
+      } catch {
+        if (cancelled) return;
+        setReportEligibility({
+          loading: false,
+          eligible: false,
+          checkFailed: true,
+          message: "Chưa xác minh được điều kiện ngay lúc này.",
+          postId,
+          userId: currentUserId,
+        });
+      }
+    };
+    void checkEligibility();
+    return () => {
+      cancelled = true;
+    };
+  }, [post?.post_id, userId]);
+  const eligibilityMatchesCurrentPost =
+    reportEligibility.postId === Number(post?.post_id) &&
+    reportEligibility.userId === Number(userId);
+  const isCheckingReportEligibility =
+    !eligibilityMatchesCurrentPost || reportEligibility.loading;
+  const canReport =
+    eligibilityMatchesCurrentPost &&
+    (reportEligibility.eligible || reportEligibility.checkFailed);
+
   useEffect(() => {
     if (!post?.post_id) return;
     getSavedPosts(userId)
@@ -204,6 +290,15 @@ export default function PostDetailScreen({
 
   // Báo cáo bài đăng
   const handleReport = () => {
+    if (!canReport) {
+      Alert.alert(
+        "Chưa thể báo cáo",
+        isCheckingReportEligibility
+          ? "Đang kiểm tra điều kiện báo cáo. Vui lòng đợi giây lát."
+          : reportEligibility.message,
+      );
+      return;
+    }
     if (onReport) {
       onReport();
       return;
@@ -213,15 +308,10 @@ export default function PostDetailScreen({
       "Báo cáo bài đăng",
       "Bạn muốn báo cáo bài đăng này vì lý do gì?",
       [
-        {
-          text: "Thông tin sai sự thật",
-          onPress: () => sendReport("Sai thông tin"),
-        },
-        {
-          text: "Lừa đảo / Phòng không có thật",
-          onPress: () => sendReport("Lừa đảo"),
-        },
-        { text: "Giá phòng không đúng", onPress: () => sendReport("Sai giá") },
+        { text: "Lừa đảo", onPress: () => sendReport("Lừa đảo") },
+        { text: "Thông tin sai sự thật", onPress: () => sendReport("Thông tin sai sự thật") },
+        { text: "Trọ không tồn tại", onPress: () => sendReport("Trọ không tồn tại") },
+        { text: "Khác", onPress: () => sendReport("Khác") },
         { text: "Hủy", style: "cancel" },
       ],
     );
@@ -358,6 +448,21 @@ export default function PostDetailScreen({
 
         {/* 2. NỘI DUNG CHÍNH BÀI ĐĂNG */}
         <View style={styles.contentContainer}>
+          {reportNotice ? (
+            <View style={styles.reportNotice}>
+              <MaterialIcons name="check-circle" size={19} color="#0F7B52" />
+              <Text style={styles.reportNoticeText}>{reportNotice}</Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Đóng thông báo báo cáo"
+                onPress={onDismissReportNotice}
+                style={styles.reportNoticeClose}
+              >
+                <MaterialIcons name="close" size={18} color="#0F7B52" />
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           {/* Giá & Thời gian */}
           <View style={styles.priceRow}>
             <Text style={styles.priceText}>{currentPost.price}</Text>
@@ -537,12 +642,37 @@ export default function PostDetailScreen({
             </View>
 
             {/* Nút báo cáo bài đăng */}
-            {!isOwnPost && (
-              <TouchableOpacity style={styles.reportBtn} onPress={handleReport}>
+            {!isOwnPost && <View style={styles.reportGroup}>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isCheckingReportEligibility || !canReport }}
+                disabled={isCheckingReportEligibility || !canReport}
+                style={[
+                  styles.reportBtn,
+                  (isCheckingReportEligibility || !canReport) && styles.reportBtnDisabled,
+                ]}
+                onPress={handleReport}
+              >
                 <MaterialIcons name="flag" size={18} color="#ba1a1a" />
-                <Text style={styles.reportText}>Báo cáo tin</Text>
+                <Text style={styles.reportText}>
+                  {isCheckingReportEligibility ? "Đang kiểm tra…" : "Báo cáo tin"}
+                </Text>
               </TouchableOpacity>
-            )}
+              {!canReport && !isCheckingReportEligibility ? (
+                <Text style={styles.reportEligibilityHint}>
+                  {reportEligibility.message === "Bạn không thể báo cáo bài đăng của chính mình."
+                    ? "Không thể báo cáo tin của bạn."
+                    : reportEligibility.message === "Bài đăng không còn tồn tại."
+                      ? "Tin này không còn tồn tại."
+                      : "Chỉ người đã nhắn tin, đặt lịch hoặc gửi yêu cầu thuê mới được báo cáo."}
+                </Text>
+              ) : null}
+              {canReport && reportEligibility.checkFailed ? (
+                <Text style={styles.reportEligibilityHint}>
+                  Chưa xác minh được. Hệ thống sẽ kiểm tra khi bạn gửi báo cáo.
+                </Text>
+              ) : null}
+            </View>}
           </View>
         </View>
       </ScrollView>
@@ -671,6 +801,27 @@ const styles = StyleSheet.create({
   /* Main Body Content */
   contentContainer: {
     padding: 16,
+  },
+  reportNotice: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#B7E4CB",
+    backgroundColor: "#ECFDF3",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  reportNoticeText: {
+    flex: 1,
+    color: "#0F5132",
+    fontSize: 13,
+    fontWeight: "700",
+    lineHeight: 18,
+  },
+  reportNoticeClose: {
+    padding: 2,
   },
   priceRow: {
     flexDirection: "row",
@@ -921,7 +1072,7 @@ const styles = StyleSheet.create({
   reactionRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
     marginTop: 4,
     paddingHorizontal: 4,
   },
@@ -966,10 +1117,25 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     paddingHorizontal: 8,
   },
+  reportBtnDisabled: {
+    opacity: 0.45,
+  },
+  reportGroup: {
+    alignItems: "flex-end",
+    width: "52%",
+  },
   reportText: {
     fontSize: 12,
     color: "#ba1a1a",
     fontWeight: "600",
+  },
+  reportEligibilityHint: {
+    maxWidth: 190,
+    marginTop: 0,
+    color: "#6d7a77",
+    fontSize: 10,
+    lineHeight: 13,
+    textAlign: "right",
   },
 
   /* Bottom Actions Dock */

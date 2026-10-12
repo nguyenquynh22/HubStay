@@ -9,6 +9,13 @@ import type {
 const apiBaseUrl = (
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:5000/api"
 ).replace(/\/$/, "");
+const apiOrigin = /^https?:\/\//i.test(apiBaseUrl) ? new URL(apiBaseUrl).origin : "";
+
+export function resolveMediaUrl(url: string): string {
+  if (/^(https?:|data:|blob:|\/\/)/i.test(url)) return url;
+  const path = `/${url.replace(/^\/+/, "")}`;
+  return apiOrigin ? `${apiOrigin}${path}` : path;
+}
 
 export type UserRole = "STUDENT" | "WORKER" | "LANDLORD";
 export type UserStatus = "ACTIVE" | "WARNING" | "BANNED";
@@ -31,6 +38,18 @@ export interface AdminUser {
   post_count?: number;
   active_post_count?: number;
   active_subscription_count?: number;
+  report_strike_count?: number;
+  violation_reports?: Array<{
+    report_id: number;
+    post_id: number;
+    post_title: string;
+    reason: string;
+    description: string;
+    status: "PENDING" | "RESOLVED" | "DISMISSED";
+    created_at: string;
+    decision_reversed: boolean;
+    reversal_note: string | null;
+  }>;
   latest_verification?: {
     request_id: number;
     account_type: UserRole;
@@ -104,6 +123,10 @@ export interface AdminPost {
     phone: string | null;
     initials: string;
   };
+  imageUrls?: string[];
+  imageReviewRequired?: boolean;
+  imageReviewReason?: string | null;
+  imageReviewStatus?: "PENDING" | "REJECTED" | "APPROVED" | null;
   createdAt: string;
 }
 
@@ -124,10 +147,37 @@ export interface AdminReport {
   id: number;
   reason: string;
   description: string;
-  status: string;
+  evidenceImageUrl?: string;
+  status: "PENDING" | "RESOLVED" | "DISMISSED";
+  decisionReversed?: boolean;
+  reversalNote?: string | null;
+  pendingReportCount?: number;
+  interactionEvidence?: {
+    chat: {
+      conversationId: string;
+      messageId: string;
+      messageAt: string | null;
+    } | null;
+    appointmentId: number | null;
+    rentalRequestId: number | null;
+    chatLookupAvailable: boolean;
+  };
   reporter: { name: string; email: string; phone: string | null };
-  post: { id: number; title: string };
-  target: { name: string; email: string; initials: string };
+  post: {
+    id: number;
+    title: string;
+    description?: string;
+    postType?: string;
+    price?: number | null;
+    area?: number | null;
+    address?: string;
+    status?: string;
+    verified?: boolean;
+    imageUrls?: string[];
+    reportCount?: number;
+    createdAt?: string;
+  };
+  target: { name: string; email: string; phone?: string | null; initials: string };
   createdAt: string;
 }
 
@@ -388,25 +438,46 @@ export const adminApi = {
       method: "PATCH",
       body: JSON.stringify({ status, reason }),
     }),
-  posts: () => request<{ items: AdminPost[] }>("/admin/posts"),
+  posts: async () => {
+    const result = await request<{ items: AdminPost[] }>("/admin/posts");
+    return {
+      ...result,
+      items: result.items.map((post) => ({
+        ...post,
+        imageUrl: post.imageUrl ? resolveMediaUrl(post.imageUrl) : null,
+        imageUrls: post.imageUrls?.map(resolveMediaUrl),
+      })),
+    };
+  },
   createPost: (payload: AdminPostPayload & { author_id: number }) =>
-    request<{ success: boolean; id: number }>("/admin/posts", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
-  updatePost: (
-    id: number,
-    payload: Partial<AdminPostPayload> & { is_approved?: boolean },
-  ) =>
-    request<{ success: boolean }>("/admin/posts/" + id, {
-      method: "PATCH",
-      body: JSON.stringify(payload),
-    }),
-  reports: () => request<{ items: AdminReport[] }>("/admin/reports"),
+    request<{ success: boolean; id: number }>("/admin/posts", { method: "POST", body: JSON.stringify(payload) }),
+  updatePost: (id: number, payload: Partial<AdminPostPayload> & { is_approved?: boolean; imageReviewDecision?: "REJECTED" }) =>
+    request<{ success: boolean; imageReviewStatus?: string }>("/admin/posts/" + id, { method: "PATCH", body: JSON.stringify(payload) }),
+  reports: async () => {
+    const result = await request<{ items: AdminReport[] }>("/admin/reports");
+    return {
+      ...result,
+      items: result.items.map((report) => ({
+        ...report,
+        evidenceImageUrl: report.evidenceImageUrl
+          ? resolveMediaUrl(report.evidenceImageUrl)
+          : report.evidenceImageUrl,
+        post: {
+          ...report.post,
+          imageUrls: report.post.imageUrls?.map(resolveMediaUrl),
+        },
+      })),
+    };
+  },
   reviewReport: (id: number, status: "RESOLVED" | "DISMISSED") =>
-    request("/admin/reports/" + id, {
+    request<{ success: boolean; data: { status: AdminReport["status"]; postStatus: string | null; strikeCount: number | null; sanction: string | null; pendingReportCount: number } }>("/admin/reports/" + id, {
       method: "PATCH",
       body: JSON.stringify({ status }),
+    }),
+  undoReportDecision: (id: number, reason: string) =>
+    request<{ success: boolean; data: { status: AdminReport["status"]; postStatus: string; strikeCount: number; sanction: string | null; pendingReportCount: number } }>("/admin/reports/" + id + "/undo", {
+      method: "PATCH",
+      body: JSON.stringify({ reason }),
     }),
   landmarks: () => request<{ items: AdminLandmark[] }>("/admin/landmarks"),
   createLandmark: (payload: unknown) =>

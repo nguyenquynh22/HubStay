@@ -371,25 +371,45 @@ app.get("/api/admin/reports", requireAdmin, async (_req, res, next) => {
     const [rows] = await pool.query<RowDataPacket[]>(
       "SELECT r.report_id, r.reason, r.description, r.evidence_image_url, r.status, r.created_at, " +
         "reporter.full_name AS reporter_name, reporter.email AS reporter_email, reporter.phone AS reporter_phone, " +
-        "p.post_id, p.title AS post_title, author.full_name AS author_name, author.email AS author_email " +
+        "p.post_id, p.title AS post_title, p.description AS post_description, p.post_type, p.price, p.area, " +
+        "p.address_detail, p.status AS post_status, p.is_approved, p.created_at AS post_created_at, " +
+        "author.full_name AS author_name, author.email AS author_email, author.phone AS author_phone, " +
+        "(SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id ASC SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS post_image_urls, " +
+        "(SELECT COUNT(*) FROM post_reports pr WHERE pr.post_id = r.post_id) AS post_report_count, " +
+        "(SELECT COUNT(*) FROM post_reports pr WHERE pr.post_id = r.post_id AND pr.status = 'PENDING') AS pending_report_count, " +
+        "(SELECT MAX(pr.created_at) FROM post_reports pr WHERE pr.post_id = r.post_id AND pr.status = 'PENDING') AS latest_pending_report_at " +
         "FROM post_reports r " +
-        "JOIN users reporter ON reporter.user_id = r.reporter_id " +
-        "JOIN posts p ON p.post_id = r.post_id " +
-        "JOIN users author ON author.user_id = p.author_id " +
-        "ORDER BY r.created_at DESC LIMIT 100",
+        "LEFT JOIN users reporter ON reporter.user_id = r.reporter_id " +
+        "LEFT JOIN posts p ON p.post_id = r.post_id " +
+        "LEFT JOIN users author ON author.user_id = p.author_id " +
+        "ORDER BY pending_report_count DESC, latest_pending_report_at DESC, r.created_at DESC",
     );
     res.json({
-      items: rows.map((row, index) => ({
+      items: rows.map((row) => ({
         id: asNumber(row.report_id),
-        reason: row.reason,
-        description: row.description,
-        evidenceImageUrl: row.evidence_image_url,
+        reason: row.reason ?? "",
+        description: row.description ?? "",
+        evidenceImageUrl: row.evidence_image_url ?? "",
         status: row.status,
+        pendingReportCount: asNumber(row.pending_report_count),
         statusLabel: statusLabel(row.status),
         statusTone: statusTone(row.status),
-        reporter: { name: row.reporter_name, email: row.reporter_email, phone: row.reporter_phone },
-        post: { id: asNumber(row.post_id), title: row.post_title },
-        target: { name: row.author_name, email: row.author_email, initials: initials(row.author_name), avatarTone: avatarTone(index) },
+        reporter: { name: row.reporter_name ?? "", email: row.reporter_email ?? "", phone: row.reporter_phone ?? null },
+        post: {
+          id: asNumber(row.post_id),
+          title: row.post_title ?? "",
+          description: row.post_description ?? "",
+          postType: row.post_type ?? "",
+          price: row.price === null || row.price === undefined ? null : asNumber(row.price),
+          area: row.area === null || row.area === undefined ? null : asNumber(row.area),
+          address: row.address_detail ?? "",
+          status: row.post_status ?? "",
+          verified: Boolean(row.is_approved),
+          imageUrls: typeof row.post_image_urls === "string" ? row.post_image_urls.split("||").filter(Boolean) : [],
+          reportCount: asNumber(row.post_report_count),
+          createdAt: row.post_created_at ?? null,
+        },
+        target: { name: row.author_name ?? "", email: row.author_email ?? "", phone: row.author_phone ?? null, initials: initials(row.author_name ?? "") },
         createdAt: row.created_at,
       })),
     });
@@ -399,6 +419,7 @@ app.get("/api/admin/reports", requireAdmin, async (_req, res, next) => {
 });
 
 app.patch("/api/admin/reports/:id", requireAdmin, async (req, res, next) => {
+  let connection: PoolConnection | undefined;
   try {
     const id = Number(req.params.id);
     const status = req.body?.status;
@@ -406,14 +427,203 @@ app.patch("/api/admin/reports/:id", requireAdmin, async (req, res, next) => {
       res.status(400).json({ message: "Trạng thái báo cáo không hợp lệ." });
       return;
     }
-    const [result] = await pool.execute<ResultSetHeader>("UPDATE post_reports SET status = ? WHERE report_id = ?", [status, id]);
-    if (result.affectedRows === 0) {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+    const [reportRows] = await connection.execute<RowDataPacket[]>(
+      "SELECT report_id, post_id FROM post_reports WHERE report_id = ?",
+      [id],
+    );
+    if (!reportRows[0]) {
+      await connection.rollback();
       res.status(404).json({ message: "Không tìm thấy báo cáo." });
       return;
     }
-    res.json({ ok: true });
+    const [postRows] = await connection.execute<RowDataPacket[]>(
+      "SELECT post_id, author_id FROM posts WHERE post_id = ?",
+      [reportRows[0].post_id],
+    );
+    if (!postRows[0]) {
+      await connection.rollback();
+      res.status(409).json({ message: "Bài đăng không còn tồn tại." });
+      return;
+    }
+    const [owners] = await connection.execute<RowDataPacket[]>(
+      "SELECT user_id, full_name, status, banned_until, (banned_until IS NOT NULL AND banned_until > NOW()) AS posting_restricted FROM users WHERE user_id = ? FOR UPDATE",
+      [postRows[0].author_id],
+    );
+    const owner = owners[0];
+    if (!owner) {
+      await connection.rollback();
+      res.status(409).json({ message: "Không tìm thấy chủ bài đăng." });
+      return;
+    }
+    const [lockedPosts] = await connection.execute<RowDataPacket[]>(
+      "SELECT post_id, author_id, title, status, is_approved FROM posts WHERE post_id = ? FOR UPDATE",
+      [reportRows[0].post_id],
+    );
+    const post = lockedPosts[0];
+    if (!post) {
+      await connection.rollback();
+      res.status(409).json({ message: "Bài đăng không còn tồn tại." });
+      return;
+    }
+    const [lockedReports] = await connection.execute<RowDataPacket[]>(
+      "SELECT report_id, post_id, reporter_id, status FROM post_reports WHERE report_id = ? FOR UPDATE",
+      [id],
+    );
+    const report = lockedReports[0];
+    if (!report) {
+      await connection.rollback();
+      res.status(404).json({ message: "Không tìm thấy báo cáo." });
+      return;
+    }
+    if (report.status !== "PENDING") {
+      await connection.rollback();
+      res.status(409).json({ message: "Báo cáo này đã được kết luận." });
+      return;
+    }
+    if (status === "RESOLVED") {
+      const [relatedReports] = await connection.execute<RowDataPacket[]>(
+        "SELECT report_id, reporter_id FROM post_reports WHERE post_id = ? AND status = 'PENDING'",
+        [report.post_id],
+      );
+      for (const related of relatedReports) {
+        await connection.execute(
+          "INSERT INTO notifications (user_id, type, title, body, data) VALUES (?, ?, ?, ?, ?)",
+          [
+            related.reporter_id,
+            "POST_REPORT_RESOLVED",
+            "Báo cáo đã được xác nhận",
+            "Quản trị viên đã xác nhận bài đăng vi phạm và gỡ bài khỏi danh sách công khai.",
+            JSON.stringify({ post_id: Number(report.post_id), report_id: Number(related.report_id) }),
+          ],
+        );
+      }
+      await connection.execute("UPDATE posts SET status = 'HIDDEN' WHERE post_id = ?", [report.post_id]);
+      await connection.execute(
+        "UPDATE post_reports SET status = 'RESOLVED' WHERE post_id = ? AND status = 'PENDING'",
+        [report.post_id],
+      );
+      const [strikes] = await connection.execute<RowDataPacket[]>(
+        "SELECT COUNT(DISTINCT p.post_id) AS strike_count FROM post_reports r JOIN posts p ON p.post_id = r.post_id WHERE p.author_id = ? AND r.status = 'RESOLVED'",
+        [owner.user_id],
+      );
+      const strikeCount = asNumber(strikes[0]?.strike_count);
+      let sanction: string | null = null;
+      let notification: { type: string; title: string; body: string } | null = null;
+      if (strikeCount === 1) {
+        sanction = "WARNING";
+        notification = {
+          type: "POST_VIOLATION_WARNING",
+          title: "Cảnh báo vi phạm bài đăng",
+          body: "Một bài đăng của bạn đã bị xác nhận vi phạm. Đây là cảnh cáo lần 1.",
+        };
+      } else if (strikeCount === 2) {
+        sanction = "SEVEN_DAY_RESTRICTION";
+        notification = {
+          type: "POSTING_SUSPENDED",
+          title: "Tạm khóa quyền đăng bài",
+          body: "Bài đăng vi phạm lần thứ 2. Bạn không thể đăng bài mới trong 7 ngày; các bài đăng hiện có đã được tạm ẩn.",
+        };
+        await connection.execute(
+          "UPDATE users SET status = 'WARNING', banned_until = DATE_ADD(NOW(), INTERVAL 7 DAY), ban_reason = ? WHERE user_id = ?",
+          ["Tạm khóa quyền đăng bài do có 2 bài đăng vi phạm.", owner.user_id],
+        );
+        await connection.execute(
+          "UPDATE posts SET status = 'HIDDEN' WHERE author_id = ? AND status <> 'HIDDEN'",
+          [owner.user_id],
+        );
+      } else if (strikeCount >= 3) {
+        sanction = "PERMANENT_BAN";
+        notification = {
+          type: "ACCOUNT_PERMANENTLY_BANNED",
+          title: "Tài khoản đã bị khóa",
+          body: "Tài khoản bị khóa vĩnh viễn do có từ 3 bài đăng vi phạm trở lên. Tất cả bài đăng đã bị ẩn.",
+        };
+        await connection.execute(
+          "UPDATE users SET status = 'BANNED', banned_until = NULL, ban_reason = ? WHERE user_id = ?",
+          ["Khóa vĩnh viễn do có từ 3 bài đăng vi phạm trở lên.", owner.user_id],
+        );
+        await connection.execute(
+          "UPDATE posts SET status = 'HIDDEN' WHERE author_id = ? AND status <> 'HIDDEN'",
+          [owner.user_id],
+        );
+      }
+      if (notification) {
+        await connection.execute(
+          "INSERT INTO notifications (user_id, type, title, body, data) VALUES (?, ?, ?, ?, ?)",
+          [
+            owner.user_id,
+            notification.type,
+            notification.title,
+            notification.body,
+            JSON.stringify({ post_id: Number(report.post_id), report_id: id, strike_count: strikeCount }),
+          ],
+        );
+      }
+      await connection.commit();
+      res.json({
+        success: true,
+        data: { status, postStatus: "HIDDEN", strikeCount, sanction, pendingReportCount: 0 },
+      });
+      return;
+    }
+    await connection.execute<ResultSetHeader>(
+      "UPDATE post_reports SET status = ? WHERE report_id = ?",
+      [status, id],
+    );
+    await connection.execute(
+      "INSERT INTO notifications (user_id, type, title, body, data) VALUES (?, ?, ?, ?, ?)",
+      [
+        report.reporter_id,
+        "POST_REPORT_DISMISSED",
+        "Báo cáo đã được xem xét",
+        "Quản trị viên đã xem xét và kết luận bài đăng không vi phạm.",
+        JSON.stringify({ post_id: Number(report.post_id), report_id: id }),
+      ],
+    );
+    const [remaining] = await connection.execute<RowDataPacket[]>(
+      "SELECT COUNT(*) AS pending_count FROM post_reports WHERE post_id = ? AND status = 'PENDING'",
+      [report.post_id],
+    );
+    const [autoHideMarkers] = await connection.execute<RowDataPacket[]>(
+      "SELECT notification_id FROM notifications WHERE user_id = ? AND type = 'POST_AUTO_HIDDEN_REPORT_THRESHOLD' AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.post_id')) = ? ORDER BY created_at DESC LIMIT 1",
+      [owner.user_id, String(report.post_id)],
+    );
+    const canRestore = asNumber(remaining[0]?.pending_count) === 0 &&
+      Boolean(autoHideMarkers[0]) &&
+      owner.status !== "BANNED" &&
+      !Boolean(owner.posting_restricted);
+    let postStatus: string | null = null;
+    if (canRestore) {
+      const [restored] = await connection.execute<ResultSetHeader>(
+        "UPDATE posts SET status = 'AVAILABLE' WHERE post_id = ? AND status = 'HIDDEN' AND is_approved = 1",
+        [report.post_id],
+      );
+      if (restored.affectedRows) {
+        postStatus = "AVAILABLE";
+        await connection.execute(
+          "UPDATE notifications SET type = 'POST_AUTO_HIDE_RESTORED' WHERE notification_id = ?",
+          [autoHideMarkers[0].notification_id],
+        );
+      }
+    }
+    await connection.commit();
+    res.json({
+      success: true,
+      data: {
+        status,
+        postStatus,
+        strikeCount: null,
+        sanction: null,
+        pendingReportCount: asNumber(remaining[0]?.pending_count),
+      },
+    });
   } catch (error) {
+    if (connection) await connection.rollback();
     next(error);
+  } finally {
+    connection?.release();
   }
 });
 

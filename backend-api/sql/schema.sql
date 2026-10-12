@@ -296,4 +296,3 @@ CREATE TABLE IF NOT EXISTS `vip_packages` (
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   INDEX `idx_vip_packages_active_order` (`is_active`, `sort_order`, `price`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-

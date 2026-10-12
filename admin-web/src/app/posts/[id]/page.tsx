@@ -1,11 +1,11 @@
 "use client";
 
 import { type FormEvent, useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Building2, Check, EyeOff, Pencil, RotateCcw } from "lucide-react";
+import { ArrowLeft, Check, EyeOff, Pencil, RotateCcw } from "lucide-react";
 import { AdminLayout } from "@/components/AdminLayout";
+import { PostImageWithFallback } from "@/components/PostImageWithFallback";
 import { ApiError, adminApi, type AdminPost, type AdminPostPayload } from "@/services/api";
 
 const statusLabels: Record<string, string> = {
@@ -52,7 +52,10 @@ export default function PostDetailsPage() {
     return () => { cancelled = true; };
   }, [params.id]);
 
-  async function updatePost(payload: Partial<AdminPostPayload> & { is_approved?: boolean }, message: string) {
+  async function updatePost(
+    payload: Partial<AdminPostPayload> & { is_approved?: boolean; imageReviewDecision?: "REJECTED" },
+    message: string,
+  ) {
     if (!post) return;
     setIsSaving(true);
     setError("");
@@ -63,6 +66,11 @@ export default function PostDetailsPage() {
         ...current,
         ...(payload.status ? { status: payload.status } : {}),
         ...(payload.is_approved !== undefined ? { verified: payload.is_approved } : {}),
+        ...(payload.imageReviewDecision === "REJECTED"
+          ? { imageReviewRequired: false, imageReviewStatus: "REJECTED" as const }
+          : payload.is_approved === true && current.imageReviewRequired
+            ? { imageReviewRequired: false, imageReviewStatus: "APPROVED" as const }
+            : {}),
       } : current);
       setNotice(message);
     } catch (reason) {
@@ -119,13 +127,25 @@ export default function PostDetailsPage() {
   return (
     <AdminLayout>
       <div className="space-y-5">
-        <Link href="/posts" className="inline-flex items-center gap-2 text-[12px] font-medium text-[#2d5af5] hover:underline"><ArrowLeft className="h-4 w-4" />Quay lại danh sách bài đăng</Link>
+        <div className="flex flex-wrap items-center gap-4">
+          <Link href="/posts" className="inline-flex items-center gap-2 text-[12px] font-medium text-[#2d5af5] hover:underline"><ArrowLeft className="h-4 w-4" />Quay lại danh sách bài đăng</Link>
+        </div>
         {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</p> : null}
         {notice ? <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">{notice}</p> : null}
         {post ? <section className="overflow-hidden rounded-[16px] border border-slate-200 bg-white shadow-sm">
-          {post.imageUrl ? <Image src={post.imageUrl} alt="" width={1200} height={700} unoptimized className="h-64 w-full object-cover" /> : <div className="flex h-48 items-center justify-center bg-slate-50"><Building2 className="h-12 w-12 text-slate-300" /></div>}
+          {post.imageUrls?.length ? (
+            <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-2">
+              {post.imageUrls.map((url, index) => (
+                <PostImageWithFallback key={`${url}-${index}`} src={url} alt={`Ảnh bài đăng ${index + 1}`} className="h-64 w-full rounded-lg" imageClassName="object-contain" iconClassName="h-12 w-12 text-slate-300" />
+              ))}
+            </div>
+          ) : <PostImageWithFallback src={post.imageUrl} alt="" className="h-48 w-full bg-slate-50" iconClassName="h-12 w-12 text-slate-300" />}
           <div className="space-y-5 p-5">
             <div><p className="text-[11px] font-medium text-slate-500">BÀI ĐĂNG #{post.id}</p>{!isEditing ? <h1 className="mt-1 text-[24px] font-bold leading-tight text-slate-900">{post.title}</h1> : null}</div>
+            {post.imageReviewRequired ? <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[13px] text-amber-900">
+              <p className="font-semibold">Ảnh được hệ thống đánh dấu cần kiểm duyệt</p>
+              <p className="mt-1">{post.imageReviewReason || "Một hoặc nhiều ảnh có dấu hiệu nhạy cảm hoặc chưa rõ ràng."} Bài hiện chưa công khai; hãy kiểm tra toàn bộ ảnh trước khi quyết định.</p>
+            </div> : post.imageReviewStatus === "REJECTED" ? <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[13px] text-rose-800">Ảnh chưa được duyệt; bài vẫn chưa công khai.</p> : null}
             {isEditing ? (
               <form onSubmit={savePostEdits} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -172,8 +192,17 @@ export default function PostDetailsPage() {
             )}
             <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-4">
               {!isEditing ? <button type="button" onClick={startEditing} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700"><Pencil className="h-4 w-4" />Sửa nội dung</button> : null}
-              {!post.verified ? <button type="button" disabled={isSaving} onClick={() => void updatePost({ is_approved: true }, "Đã duyệt bài đăng.")} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" />Duyệt bài đăng</button> : <button type="button" disabled={isSaving} onClick={() => void updatePost({ is_approved: false }, "Đã gỡ duyệt bài đăng.")} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Gỡ duyệt</button>}
-              {post.status !== "HIDDEN" ? <button type="button" disabled={isSaving} onClick={() => void updatePost({ status: "HIDDEN" }, "Đã ẩn bài đăng.")} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[12px] font-medium text-slate-700 disabled:opacity-50"><EyeOff className="h-4 w-4" />Ẩn bài đăng</button> : <button type="button" disabled={isSaving} onClick={() => void updatePost({ status: "AVAILABLE" }, "Đã mở lại bài đăng.")} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Mở lại bài đăng</button>}
+              {!post.verified ? <button type="button" disabled={isSaving} onClick={() => void updatePost({ is_approved: true, ...(post.imageReviewRequired ? { status: "AVAILABLE" } : {}) }, post.imageReviewRequired ? "Đã duyệt ảnh và công khai bài đăng." : "Đã duyệt bài đăng.")} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-50"><Check className="h-4 w-4" />{post.imageReviewRequired ? "Duyệt ảnh & công khai" : "Duyệt bài đăng"}</button> : <button type="button" disabled={isSaving} onClick={() => void updatePost({ is_approved: false }, "Đã gỡ duyệt bài đăng.")} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-medium text-amber-800 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Gỡ duyệt</button>}
+              {post.imageReviewRequired ? <button type="button" disabled={isSaving} onClick={() => {
+                if (window.confirm("Từ chối ảnh này? Bài sẽ tiếp tục không hiển thị công khai và chủ trọ sẽ được thông báo.")) {
+                  void updatePost({ imageReviewDecision: "REJECTED" }, "Đã từ chối ảnh; bài vẫn chưa công khai.");
+                }
+              }} className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] font-medium text-rose-800 disabled:opacity-50"><EyeOff className="h-4 w-4" />Từ chối ảnh</button> : null}
+              {post.status !== "HIDDEN" ? <button type="button" disabled={isSaving} onClick={() => void updatePost({ status: "HIDDEN" }, "Đã ẩn bài đăng.")} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-[12px] font-medium text-slate-700 disabled:opacity-50"><EyeOff className="h-4 w-4" />Ẩn bài đăng</button> : <button type="button" disabled={isSaving} onClick={() => {
+                if (window.confirm("Xác nhận mở lại bài đăng và hiển thị công khai? Chỉ thực hiện nếu đã xác minh kết luận ẩn bài trước đó là nhầm.")) {
+                  void updatePost({ status: "AVAILABLE" }, "Đã mở lại bài đăng và hiển thị công khai.");
+                }
+              }} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-medium text-blue-700 disabled:opacity-50"><RotateCcw className="h-4 w-4" />Mở lại bài đăng</button>}
               {isSaving ? <span className="self-center text-[12px] text-slate-500">Đang lưu...</span> : null}
             </div>
           </div>

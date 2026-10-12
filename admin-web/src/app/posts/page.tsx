@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Image from "next/image";
-import { Building2, Eye, Plus, Search } from "lucide-react";
+import { Eye, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { AdminLayout } from "@/components/AdminLayout";
+import { PostImageWithFallback } from "@/components/PostImageWithFallback";
 import { ApiError, adminApi, type AdminPost } from "@/services/api";
 
 const statusLabels: Record<string, string> = {
@@ -71,12 +71,13 @@ export default function PostsPage() {
     const query = search.trim().toLocaleLowerCase("vi-VN");
     return posts.filter((post) => {
       const matchesSearch = !query || `${post.id} ${post.title} ${post.address ?? ""} ${post.author.name} ${post.author.email}`.toLocaleLowerCase("vi-VN").includes(query);
-      return matchesSearch && (statusFilter === "ALL" || post.status === statusFilter);
+      const visibleStatus = post.imageReviewRequired ? "PENDING" : post.status;
+      return matchesSearch && (statusFilter === "ALL" || visibleStatus === statusFilter);
     });
   }, [posts, search, statusFilter]);
-  const pendingCount = posts.filter((post) => post.status === "PENDING").length;
-  const activeCount = posts.filter((post) => post.status === "AVAILABLE").length;
-  const hiddenCount = posts.filter((post) => post.status === "HIDDEN").length;
+  const pendingCount = posts.filter((post) => post.imageReviewRequired || post.status === "PENDING").length;
+  const activeCount = posts.filter((post) => !post.imageReviewRequired && post.status === "AVAILABLE").length;
+  const hiddenCount = posts.filter((post) => !post.imageReviewRequired && post.status === "HIDDEN").length;
 
   return (
     <AdminLayout>
@@ -102,7 +103,7 @@ export default function PostsPage() {
 
         {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[13px] text-rose-700">{error}</p> : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {[["TỔNG BÀI ĐĂNG", posts.length], ["ĐANG HOẠT ĐỘNG", activeCount], ["CHỜ DUYỆT", pendingCount], ["ĐÃ ẨN", hiddenCount]].map(([label, value]) => (
             <div key={label} className="rounded-[16px] border border-slate-200 bg-white p-4 shadow-sm">
               <p className="text-[12px] font-semibold text-slate-500">{label}</p>
@@ -131,11 +132,11 @@ export default function PostsPage() {
               <tbody className="divide-y divide-slate-200 text-[11px] text-slate-700">
                 {filtered.map((post) => (
                   <tr key={post.id} className="bg-white hover:bg-slate-50/60">
-                    <td className="px-3 py-3"><div className="flex items-center gap-2.5"><div className="relative flex h-12 w-[68px] shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100">{post.imageUrl ? <Image src={post.imageUrl} alt="" fill unoptimized className="object-cover" /> : <Building2 className="h-7 w-7 text-slate-400/70" />}</div><div className="min-w-0"><Link href={`/posts/${post.id}`} className="block max-w-[205px] truncate font-semibold text-slate-800 hover:text-blue-700 hover:underline">{post.title}</Link><p className="mt-1 text-slate-500">#{post.id} · {typeLabels[post.postType] ?? post.postType}</p></div></div></td>
+                    <td className="px-3 py-3"><div className="flex items-center gap-2.5"><PostImageWithFallback src={post.imageUrl} alt="" className="h-12 w-[68px] shrink-0 rounded-lg" /><div className="min-w-0"><Link href={`/posts/${post.id}`} className="block max-w-[205px] truncate font-semibold text-slate-800 hover:text-blue-700 hover:underline">{post.title}</Link><p className="mt-1 text-slate-500">#{post.id} · {typeLabels[post.postType] ?? post.postType}</p></div></div></td>
                     <td className="px-3 py-3"><div className="flex items-center gap-2"><div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#dfeaff] text-[10px] font-semibold text-[#254ad8]">{initials(post.author.name)}</div><div><p className="font-semibold text-slate-800">{post.author.name}</p><p className="mt-0.5 text-slate-500">{post.author.email}</p></div></div></td>
                     <td className="px-3 py-3"><div className="font-medium text-slate-700">{post.address || "Chưa cập nhật địa chỉ"}</div><div className="mt-1 text-slate-500">{post.area ? `${post.area} m²` : "Khu vực chưa cập nhật"}</div></td>
                     <td className="whitespace-nowrap px-3 py-3 font-semibold">{formatCurrency(post.price)}</td>
-                    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${statusStyles[post.status] ?? "bg-slate-100 text-slate-600"}`}>{statusLabels[post.status] ?? post.status}</span></td>
+                    <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2 py-1 text-[10px] font-medium ${statusStyles[post.imageReviewRequired ? "PENDING" : post.status] ?? "bg-slate-100 text-slate-600"}`}>{post.imageReviewRequired ? "Chờ kiểm duyệt ảnh" : post.imageReviewStatus === "REJECTED" ? "Ảnh chưa được duyệt" : statusLabels[post.status] ?? post.status}</span></td>
                     <td className="whitespace-pre-line px-3 py-3 text-slate-500">{formatDate(post.createdAt)}</td>
                     <td className="px-3 py-3"><div className="flex justify-end"><Link href={`/posts/${post.id}`} aria-label={`Xem ${post.id}`} className="rounded-lg border border-blue-100 bg-blue-50 p-1.5 text-blue-600 hover:bg-blue-100"><Eye className="h-3.5 w-3.5" /></Link></div></td>
                   </tr>

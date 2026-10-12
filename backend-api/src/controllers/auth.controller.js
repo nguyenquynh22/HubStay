@@ -4,6 +4,7 @@ const { createHash, randomInt, timingSafeEqual } = require("node:crypto");
 const Users = require("../repositories/users.repository");
 const { sendAuthOtpEmail } = require("../services/auth-email.service");
 const { isValidPassword } = require("../lib/password-policy");
+const db = require("../common/db");
 
 const allowedRoles = new Set(["STUDENT", "WORKER", "LANDLORD"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -317,13 +318,10 @@ module.exports = {
           message: "Email hoặc mật khẩu không chính xác",
         });
       }
-      if (
-        user.status !== "ACTIVE" ||
-        (user.banned_until && new Date(user.banned_until) > new Date())
-      ) {
+      if (user.status === "BANNED") {
         return res.status(403).json({
           success: false,
-          message: "Tài khoản hiện không thể đăng nhập",
+          message: "Tài khoản đã bị khóa vĩnh viễn.",
         });
       }
       const safeUser = publicUser(user);
@@ -422,6 +420,90 @@ module.exports = {
       return res.json({
         success: true,
         message: "Đặt lại mật khẩu thành công. Vui lòng đăng nhập lại.",
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  activateAccount: async (req, res, next) => {
+    try {
+      const secret = process.env.ADMIN_JWT_SECRET;
+      if (!secret) {
+        return res.status(503).json({
+          success: false,
+          message: "Chức năng kích hoạt tài khoản chưa được cấu hình trên máy chủ.",
+        });
+      }
+
+      const token = typeof req.body?.token === "string" ? req.body.token.trim() : "";
+      const password = typeof req.body?.password === "string" ? req.body.password : "";
+      if (!token || !password) {
+        return res.status(400).json({
+          success: false,
+          message: "Link kích hoạt và mật khẩu mới là bắt buộc.",
+        });
+      }
+      if (password.length < 8 || Buffer.byteLength(password, "utf8") > 72) {
+        return res.status(400).json({
+          success: false,
+          message: "Mật khẩu cần có ít nhất 8 ký tự và không vượt quá 72 byte.",
+        });
+      }
+
+      let payload;
+      try {
+        payload = jwt.verify(token, secret);
+      } catch {
+        return res.status(400).json({
+          success: false,
+          message: "Link kích hoạt không hợp lệ hoặc đã hết hạn. Hãy liên hệ quản trị viên để được gửi link mới.",
+        });
+      }
+
+      const userId = Number(payload?.userId);
+      if (
+        !payload ||
+        typeof payload !== "object" ||
+        payload.purpose !== "user_activation" ||
+        !Number.isInteger(userId) ||
+        userId < 1 ||
+        typeof payload.nonce !== "string" ||
+        !payload.nonce
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Link kích hoạt không hợp lệ hoặc đã hết hạn. Hãy liên hệ quản trị viên để được gửi link mới.",
+        });
+      }
+
+      const [rows] = await db.query(
+        "SELECT password_hash FROM users WHERE user_id = ? AND role <> 'ADMIN' LIMIT 1",
+        [userId],
+      );
+      const user = rows[0];
+      if (!user || !(await bcrypt.compare(payload.nonce, user.password_hash))) {
+        return res.status(400).json({
+          success: false,
+          message: "Link kích hoạt đã được sử dụng hoặc không còn hợp lệ. Hãy liên hệ quản trị viên để được gửi link mới.",
+        });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      const [result] = await db.query(
+        "UPDATE users SET password_hash = ? WHERE user_id = ? AND password_hash = ? AND role <> 'ADMIN'",
+        [passwordHash, userId, user.password_hash],
+      );
+      if (result.affectedRows !== 1) {
+        return res.status(400).json({
+          success: false,
+          message: "Link kích hoạt đã được sử dụng hoặc không còn hợp lệ. Hãy liên hệ quản trị viên để được gửi link mới.",
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: "Đặt mật khẩu và kích hoạt tài khoản thành công. Bạn có thể đăng nhập.",
       });
     } catch (error) {
       next(error);

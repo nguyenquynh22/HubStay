@@ -724,8 +724,11 @@ export default function CreatePostScreen({
         );
       }
       const createdPost = response.data;
+      if (!createdPost.post_id) {
+        throw new Error(response?.message || "Máy chủ chưa xác nhận bài đăng đã được tạo.");
+      }
       const details = [
-        `Mã bài đăng: ${createdPost.post_id ?? "không có trong phản hồi"}`,
+        `Mã bài đăng: ${createdPost.post_id}`,
         `Tiêu đề: ${payload.title}`,
         `Giá thuê: ${numericPrice.toLocaleString("vi-VN")} đ/tháng`,
         `Địa chỉ: ${payload.address}`,
@@ -733,27 +736,44 @@ export default function CreatePostScreen({
         `Tọa độ: ${postCoordinates.lat}, ${postCoordinates.lng}`,
         `Loại tin: ${postType}`,
         `Số ảnh: ${images.length}`,
+        "Trạng thái: ảnh đã qua kiểm tra tự động; bài đã được đăng công khai.",
       ];
-      const message = "Bài đăng đã được máy chủ xác nhận.";
+      const message = "Bài đăng đã được máy chủ xác nhận và đăng công khai.";
       console.info("[CreatePost] Đăng bài thành công", {
         success: response.success,
         postId: createdPost.post_id,
         returnedFields: Object.keys(createdPost),
         details,
       });
-      setPostSubmitStatus({ kind: "success", message, details });
-      Alert.alert("Đăng bài thành công", details.join("\n"), [
-        { text: "OK", onPress: onCreated },
-      ]);
+      setPostSubmitStatus({
+        kind: "success",
+        message,
+        details,
+      });
+      Alert.alert(
+        "Đăng bài thành công",
+        details.join("\n"),
+        [
+          { text: "OK", onPress: onCreated },
+        ],
+      );
     } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Kiểm tra kết nối API và thử lại.";
+      const networkUnavailable =
+        !error?.response &&
+        (error?.message === "Network Error" || error?.code === "ERR_NETWORK");
+      const requestTimedOut =
+        !error?.response &&
+        ["ECONNABORTED", "ETIMEDOUT"].includes(error?.code);
+      const message = error?.response?.data?.message ||
+        (networkUnavailable
+          ? "Không kết nối được tới máy chủ API. Hãy kiểm tra backend và ngrok đang chạy, đồng thời EXPO_PUBLIC_API_URL đúng; nếu vừa đổi URL, khởi động lại Expo."
+          : requestTimedOut
+            ? "Máy chủ xử lý quá lâu nên ứng dụng chưa nhận được kết quả. Kiểm tra bài trong Quản lý bài đăng trước khi gửi lại để tránh tạo trùng."
+            : error?.message || "Kiểm tra kết nối API và thử lại.");
       console.error("[CreatePost] Đăng bài thất bại", {
         httpStatus: error?.response?.status ?? null,
+        errorCode: error?.code ?? null,
         message,
-        response: error?.response?.data ?? null,
       });
       setPostSubmitStatus({ kind: "error", message });
       setSubmitValidationError(message);
@@ -1458,14 +1478,10 @@ export default function CreatePostScreen({
               ]}
             >
               {postSubmitStatus.kind === "success"
-                ? "ĐĂNG BÀI THÀNH CÔNG"
+                ? "ĐĂNG BÀI CÔNG KHAI THÀNH CÔNG"
                 : "ĐĂNG BÀI CHƯA THÀNH CÔNG"}
             </Text>
-            <Text style={styles.postSubmitStatusMessage}>
-              {postSubmitStatus.kind === "success"
-                ? postSubmitStatus.details[0]
-                : postSubmitStatus.message}
-            </Text>
+            <Text style={styles.postSubmitStatusMessage}>{postSubmitStatus.message}</Text>
           </View>
         )}
         {!!submitValidationError && (

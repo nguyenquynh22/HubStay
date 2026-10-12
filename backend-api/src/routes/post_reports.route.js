@@ -6,6 +6,7 @@ const router = express.Router();
 
 router.get("/", requireAdmin, controller.getAll);
 router.get("/:id", requireAdmin, controller.getById);
+router.get("/eligibility/:postId", requireUser, controller.getEligibility);
 router.post("/", requireUser, controller.create);
 router.put("/:id", requireAdmin, controller.update);
 router.delete("/:id", requireAdmin, controller.delete);

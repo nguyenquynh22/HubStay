@@ -139,7 +139,7 @@ export default function DashboardPage() {
 
         {error ? <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           {statCards.map((card) => {
             const Icon = card.icon;
             const styles = toneStyles[card.tone];

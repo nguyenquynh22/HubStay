@@ -57,3 +57,27 @@ server must verify the provider signature, match the exact amount and unique
 transfer reference to a pending transaction, and credit the transaction's
 stored `user_id` exactly once. Never credit a wallet from a client-side
 "payment successful" callback or uploaded receipt.
+
+## Post image moderation
+
+The backend uses Google Cloud Vision `LABEL_DETECTION` and
+`SAFE_SEARCH_DETECTION` to check listing photos before publishing. Set
+`GOOGLE_VISION_API_KEY` in `backend-api/.env`; never commit the key or expose it
+to mobile/admin clients. Image content is sent to Google Vision for analysis.
+
+- Clear adult content is rejected; likely sensitive or ambiguous content is
+  hidden for admin review.
+- Clear room, home, building, real-estate, or furniture labels pass the
+  relevance check.
+- Strong unrelated labels (such as animals, scenery, agriculture, food,
+  vehicles, sports, logos, documents, or infographics) with no clearly
+  stronger room/home label are rejected. Uncertain or conflicting labels are
+  held for admin review; floor plans and clear property/interior labels remain
+  relevant.
+- If Vision is unavailable or the key is missing/invalid, the post is held for
+  review rather than published unchecked.
+
+Cloud Vision currently lists the first 1,000 units per feature per month as
+free; additional requests may incur charges. Each photo is checked with two
+features, so configure quota and budget alerts in Google Cloud. See
+https://cloud.google.com/vision/pricing.

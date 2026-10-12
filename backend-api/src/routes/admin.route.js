@@ -6,6 +6,7 @@ const requireAdmin = require("../middleware/requireAdmin");
 const VerificationImages = require("../services/verification_images.service");
 const VerificationRequests = require("../repositories/verification_requests.repository");
 const Notifications = require("../services/notifications.service");
+const PostReports = require("../repositories/post_reports.repository");
 
 const router = express.Router();
 const periods = new Set(["7d", "30d", "quarter", "year"]);
@@ -315,30 +316,29 @@ router.get("/posts", async (_req, res, next) => {
     const [rows] = await db.query(
       "SELECT p.post_id, p.title, p.description, p.post_type, p.price, p.area, p.address_detail, p.status, p.is_approved, p.created_at, " +
         "u.full_name, u.email, u.phone, " +
-        "(SELECT image_url FROM post_images WHERE post_id = p.post_id ORDER BY is_cover DESC, image_id ASC LIMIT 1) AS image_url " +
+        "(SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id ASC SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS image_urls, " +
+        "(SELECT n.body FROM notifications n WHERE n.user_id = p.author_id AND n.type = 'POST_IMAGE_REVIEW_REQUIRED' AND JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.post_id')) = CAST(p.post_id AS CHAR) ORDER BY n.created_at DESC LIMIT 1) AS image_review_reason, " +
+        "(SELECT n.body FROM notifications n WHERE n.user_id = p.author_id AND n.type = 'POST_IMAGE_REVIEW_REJECTED' AND JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.post_id')) = CAST(p.post_id AS CHAR) ORDER BY n.created_at DESC LIMIT 1) AS image_review_rejection " +
         "FROM posts p JOIN users u ON u.user_id = p.author_id ORDER BY p.created_at DESC",
     );
-    return res.json({
-      items: rows.map((row) => ({
-        id: Number(row.post_id),
-        title: row.title,
-        description: row.description ?? "",
-        postType: row.post_type,
-        price: Number(row.price ?? 0),
-        area: row.area === null ? null : Number(row.area),
-        address: row.address_detail,
-        status: row.status,
-        verified: Boolean(row.is_approved),
-        imageUrl: row.image_url,
-        author: {
-          name: row.full_name,
-          email: row.email,
-          phone: row.phone,
-          initials: initials(row.full_name),
-        },
-        createdAt: row.created_at,
-      })),
-    });
+    return res.json({ items: rows.map((row) => ({
+      id: Number(row.post_id),
+      title: row.title,
+      description: row.description ?? "",
+      postType: row.post_type,
+      price: Number(row.price ?? 0),
+      area: row.area === null ? null : Number(row.area),
+      address: row.address_detail,
+      status: row.status,
+      verified: Boolean(row.is_approved),
+      imageUrl: typeof row.image_urls === "string" ? row.image_urls.split("||")[0] : null,
+      imageUrls: typeof row.image_urls === "string" ? row.image_urls.split("||").filter(Boolean) : [],
+      imageReviewRequired: Boolean(row.image_review_reason),
+      imageReviewReason: row.image_review_reason ?? null,
+      imageReviewStatus: row.image_review_rejection ? "REJECTED" : row.image_review_reason ? "PENDING" : null,
+      author: { name: row.full_name, email: row.email, phone: row.phone, initials: initials(row.full_name) },
+      createdAt: row.created_at,
+    })) });
   } catch (error) {
     return next(error);
   }
@@ -469,6 +469,41 @@ router.patch("/posts/:id", async (req, res, next) => {
           message: "Thông tin cập nhật bài đăng không hợp lệ.",
         });
     }
+    const imageReviewDecision = body.imageReviewDecision;
+    if (imageReviewDecision !== undefined && !["REJECTED"].includes(imageReviewDecision)) {
+      return res.status(400).json({ success: false, message: "Kết luận kiểm duyệt ảnh không hợp lệ." });
+    }
+    const [imageReviewRows] = await db.query(
+      "SELECT p.author_id, n.notification_id FROM posts p LEFT JOIN notifications n ON n.user_id = p.author_id AND n.type = 'POST_IMAGE_REVIEW_REQUIRED' AND JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.post_id')) = CAST(p.post_id AS CHAR) WHERE p.post_id = ? ORDER BY n.created_at DESC LIMIT 1",
+      [id],
+    );
+    const imageReview = imageReviewRows[0];
+    if (!imageReview) return res.status(404).json({ success: false, message: "Không tìm thấy bài đăng." });
+    if (imageReviewDecision === "REJECTED") {
+      if (!imageReview.notification_id) {
+        return res.status(409).json({ success: false, message: "Bài đăng này không còn chờ kiểm duyệt ảnh." });
+      }
+      await db.query(
+        "UPDATE notifications SET type = 'POST_IMAGE_REVIEW_REJECTED', body = ? WHERE notification_id = ?",
+        ["Quản trị viên kết luận ảnh chưa phù hợp với bài đăng phòng trọ. Bài không được công khai.", imageReview.notification_id],
+      );
+      await db.query(
+        "INSERT INTO notifications (user_id, type, title, body, data) VALUES (?, ?, ?, ?, ?)",
+        [
+          imageReview.author_id,
+          "POST_IMAGE_REVIEW_REJECTED",
+          "Ảnh bài đăng chưa phù hợp",
+          "Quản trị viên đã kiểm duyệt và từ chối ảnh của bài đăng. Bài vẫn chưa hiển thị công khai.",
+          JSON.stringify({ post_id: id }),
+        ],
+      );
+      return res.json({ success: true, imageReviewStatus: "REJECTED" });
+    }
+    if (imageReview.notification_id && body.is_approved === true) {
+      if (!has("status")) {
+        body.status = "AVAILABLE";
+      }
+    }
     const fields = [
       ["title", "title", (value) => value.trim()],
       ["description", "description", (value) => value.trim()],
@@ -503,7 +538,23 @@ router.patch("/posts/:id", async (req, res, next) => {
       return res
         .status(404)
         .json({ success: false, message: "Không tìm thấy bài đăng." });
-    return res.json({ success: true });
+    if (imageReview.notification_id && body.is_approved === true) {
+      await db.query(
+        "UPDATE notifications SET type = 'POST_IMAGE_REVIEW_COMPLETED' WHERE notification_id = ?",
+        [imageReview.notification_id],
+      );
+      await db.query(
+        "INSERT INTO notifications (user_id, type, title, body, data) VALUES (?, ?, ?, ?, ?)",
+        [
+          imageReview.author_id,
+          "POST_IMAGE_REVIEW_APPROVED",
+          "Ảnh bài đăng đã được duyệt",
+          "Ảnh bài đăng đã được quản trị viên kiểm duyệt và bài đã được công khai.",
+          JSON.stringify({ post_id: id }),
+        ],
+      );
+    }
+    return res.json({ success: true, imageReviewStatus: body.is_approved === true ? "APPROVED" : undefined });
   } catch (error) {
     return next(error);
   }
@@ -512,33 +563,55 @@ router.patch("/posts/:id", async (req, res, next) => {
 router.get("/reports", async (_req, res, next) => {
   try {
     const [rows] = await db.query(
-      "SELECT r.*, reporter.full_name AS reporter_name, reporter.email AS reporter_email, reporter.phone AS reporter_phone, " +
-        "p.title AS post_title, author.full_name AS author_name, author.email AS author_email " +
+      "SELECT r.*, p.author_id AS post_author_id, reporter.full_name AS reporter_name, reporter.email AS reporter_email, reporter.phone AS reporter_phone, " +
+        "p.title AS post_title, p.description AS post_description, p.post_type, p.price, p.area, p.address_detail, " +
+        "p.status AS post_status, p.is_approved, p.created_at AS post_created_at, " +
+        "author.full_name AS author_name, author.email AS author_email, author.phone AS author_phone, " +
+        "(SELECT GROUP_CONCAT(image_url ORDER BY is_cover DESC, image_id ASC SEPARATOR '||') FROM post_images WHERE post_id = p.post_id) AS post_image_urls, " +
+        "(SELECT COUNT(*) FROM post_reports pr WHERE pr.post_id = r.post_id) AS post_report_count, " +
+        "(SELECT COUNT(DISTINCT pr.reporter_id) FROM post_reports pr WHERE pr.post_id = r.post_id AND pr.status = 'PENDING') AS pending_report_count, " +
+        "(SELECT MAX(pr.created_at) FROM post_reports pr WHERE pr.post_id = r.post_id AND pr.status = 'PENDING') AS latest_pending_report_at, " +
+        "(SELECT n.body FROM notifications n WHERE n.user_id = r.reporter_id AND n.type = 'POST_REPORT_DECISION_REVERSED' AND JSON_UNQUOTE(JSON_EXTRACT(n.data, '$.report_id')) = CAST(r.report_id AS CHAR) ORDER BY n.created_at DESC LIMIT 1) AS reversal_note " +
         "FROM post_reports r " +
         "LEFT JOIN users reporter ON reporter.user_id = r.reporter_id " +
         "LEFT JOIN posts p ON p.post_id = r.post_id " +
-        "LEFT JOIN users author ON author.user_id = p.author_id ORDER BY r.created_at DESC",
+        "LEFT JOIN users author ON author.user_id = p.author_id " +
+        "ORDER BY pending_report_count DESC, latest_pending_report_at DESC, r.created_at DESC",
     );
-    return res.json({
-      items: rows.map((row) => ({
-        id: Number(row.report_id),
-        reason: row.reason ?? row.description ?? "",
-        description: row.description ?? "",
-        status: row.status,
-        reporter: {
-          name: row.reporter_name ?? "",
-          email: row.reporter_email ?? "",
-          phone: row.reporter_phone ?? "",
-        },
-        post: { id: Number(row.post_id ?? 0), title: row.post_title ?? "" },
-        target: {
-          name: row.author_name ?? "",
-          email: row.author_email ?? "",
-          initials: initials(row.author_name),
-        },
-        createdAt: row.created_at,
-      })),
-    });
+    const interactionEvidence = await PostReports.getInteractionEvidenceForReports(rows);
+    return res.json({ items: rows.map((row) => ({
+      id: Number(row.report_id),
+      reason: row.reason ?? row.description ?? "",
+      description: row.description ?? "",
+      evidenceImageUrl: row.evidence_image_url ?? "",
+      status: row.status,
+      decisionReversed: Boolean(row.reversal_note),
+      reversalNote: row.reversal_note ?? null,
+      pendingReportCount: Number(row.pending_report_count ?? 0),
+      interactionEvidence: interactionEvidence.get(Number(row.report_id)) ?? {
+        chat: null,
+        appointmentId: null,
+        rentalRequestId: null,
+        chatLookupAvailable: true,
+      },
+      reporter: { name: row.reporter_name ?? "", email: row.reporter_email ?? "", phone: row.reporter_phone ?? "" },
+      post: {
+        id: Number(row.post_id ?? 0),
+        title: row.post_title ?? "",
+        description: row.post_description ?? "",
+        postType: row.post_type ?? "",
+        price: row.price === null || row.price === undefined ? null : Number(row.price),
+        area: row.area === null || row.area === undefined ? null : Number(row.area),
+        address: row.address_detail ?? "",
+        status: row.post_status ?? "",
+        verified: Boolean(row.is_approved),
+        imageUrls: typeof row.post_image_urls === "string" ? row.post_image_urls.split("||").filter(Boolean) : [],
+        reportCount: Number(row.post_report_count ?? 0),
+        createdAt: row.post_created_at,
+      },
+      target: { name: row.author_name ?? "", email: row.author_email ?? "", phone: row.author_phone ?? "", initials: initials(row.author_name) },
+      createdAt: row.created_at,
+    })) });
   } catch (error) {
     return next(error);
   }
@@ -548,20 +621,28 @@ router.patch("/reports/:id", async (req, res, next) => {
   try {
     const id = Number(req.params.id);
     const status = req.body?.status;
-    if (!Number.isInteger(id) || !["RESOLVED", "DISMISSED"].includes(status)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Trạng thái báo cáo không hợp lệ." });
+    if (!Number.isInteger(id) || id < 1 || !["RESOLVED", "DISMISSED"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Trạng thái báo cáo không hợp lệ." });
     }
-    const [result] = await db.query(
-      "UPDATE post_reports SET status = ? WHERE report_id = ?",
-      [status, id],
-    );
-    if (!result.affectedRows)
-      return res
-        .status(404)
-        .json({ success: false, message: "Không tìm thấy báo cáo." });
-    return res.json({ success: true });
+    const data = await PostReports.review(id, status);
+    return res.json({ success: true, data });
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.patch("/reports/:id/undo", async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+    if (!Number.isInteger(id) || id < 1 || reason.length < 5 || reason.length > 400) {
+      return res.status(400).json({
+        success: false,
+        message: "Vui lòng nhập lý do hoàn tác từ 5 đến 400 ký tự.",
+      });
+    }
+    const data = await PostReports.undoDecision(id, reason);
+    return res.json({ success: true, data });
   } catch (error) {
     return next(error);
   }
