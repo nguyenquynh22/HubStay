@@ -27,8 +27,10 @@ class RentalRequestsRepository {
 
   static async getByPostId(postId) {
     const sql = `
-      SELECT r.*, u.full_name AS tenant_name, u.phone AS tenant_phone, u.avatar_url
+      SELECT r.*, u.full_name AS tenant_name, u.phone AS tenant_phone,
+             u.avatar_url, p.author_id
       FROM rental_requests r
+      JOIN posts p ON p.post_id = r.post_id
       LEFT JOIN users u ON r.tenant_id = u.user_id
       WHERE r.post_id = ?
       ORDER BY r.created_at DESC
@@ -62,6 +64,14 @@ class RentalRequestsRepository {
     `;
     const [rows] = await db.query(sql, [tenantId]);
     return rows;
+  }
+
+  static async getPostOwner(postId) {
+    const [rows] = await db.query(
+      "SELECT author_id FROM posts WHERE post_id = ? LIMIT 1",
+      [postId],
+    );
+    return rows[0]?.author_id ?? null;
   }
 
   static async create(data) {

@@ -632,7 +632,11 @@ export default function CreatePostScreen({
 
     const missingFields = [
       !title.trim() ? "Tiêu đề" : "",
+      title.trim().length > 200 ? "Tiêu đề tối đa 200 ký tự" : "",
       !description.trim() ? "Mô tả chi tiết" : "",
+      !allowedPostTypes.includes(postType)
+        ? "Hình thức đăng tin phù hợp với loại tài khoản"
+        : "",
       !price.trim() || !Number.isFinite(numericPrice) || numericPrice <= 0
         ? "Giá thuê lớn hơn 0"
         : "",
@@ -766,9 +770,25 @@ export default function CreatePostScreen({
         <TouchableOpacity style={styles.backBtn} onPress={onBack}>
           <MaterialIcons name="arrow-back" size={24} color="#131b2e" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Đăng Tin Phòng Mới</Text>
-        <TouchableOpacity style={styles.draftBtn} onPress={onCreated}>
-          <Text style={styles.draftText}>Lưu nháp</Text>
+        <Text style={styles.headerTitle}>Đăng bài mới</Text>
+        <TouchableOpacity
+          style={styles.draftBtn}
+          onPress={() =>
+            Alert.alert(
+              "Đóng form đăng bài?",
+              "Thông tin chưa đăng sẽ bị mất; ứng dụng hiện chưa lưu bản nháp.",
+              [
+                { text: "Tiếp tục nhập", style: "cancel" },
+                {
+                  text: "Đóng form",
+                  style: "destructive",
+                  onPress: onBack || onCreated,
+                },
+              ],
+            )
+          }
+        >
+          <Text style={styles.draftText}>Đóng</Text>
         </TouchableOpacity>
       </View>
 

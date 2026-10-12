@@ -92,7 +92,7 @@ export default function ManageAppointmentsScreen({
 
   const changeStatus = async (
     appointmentId: number,
-    status: "CONFIRMED" | "CANCELLED",
+    status: "CONFIRMED" | "REJECTED" | "CANCELLED",
   ) => {
     try {
       await updateAppointment(appointmentId, { actor_id: userId, status });
@@ -358,7 +358,7 @@ export default function ManageAppointmentsScreen({
               : item.status === "CONFIRMED"
                 ? "Đã xác nhận"
                 : item.status === "REJECTED"
-                  ? "Bị từ chối"
+                  ? "Đã từ chối"
                   : "Đã hủy";
           const statusColor =
             item.status === "PENDING"
@@ -446,14 +446,24 @@ export default function ManageAppointmentsScreen({
               ) : isActive ? (
                 <View style={styles.actions}>
                   {isLandlord && item.status === "PENDING" && (
-                    <TouchableOpacity
-                      style={styles.primaryButton}
-                      onPress={() =>
-                        changeStatus(Number(item.appointment_id), "CONFIRMED")
-                      }
-                    >
-                      <Text style={styles.primaryText}>Chấp nhận</Text>
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity
+                        style={styles.primaryButton}
+                        onPress={() =>
+                          changeStatus(Number(item.appointment_id), "CONFIRMED")
+                        }
+                      >
+                        <Text style={styles.primaryText}>Xác nhận</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.cancelButton}
+                        onPress={() =>
+                          changeStatus(Number(item.appointment_id), "REJECTED")
+                        }
+                      >
+                        <Text style={styles.cancelText}>Từ chối</Text>
+                      </TouchableOpacity>
+                    </>
                   )}
                   <TouchableOpacity
                     style={styles.secondaryButton}

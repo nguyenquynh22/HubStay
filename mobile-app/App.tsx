@@ -141,7 +141,6 @@ export default function App() {
         <ReportPostScreen
           onBack={() => setCurrentNestedScreen("POST_DETAIL")}
           postId={Number(selectedPost?.post_id)}
-          userId={currentUserId}
         />
       ) : currentNestedScreen === "TRANSACTION_HISTORY" ? (
         <TransactionHistoryScreen

@@ -5,6 +5,42 @@ const ContentModeration = require("../services/content_moderation.service");
 const { validatePostTypeForRole } = require("../lib/post-permissions");
 
 module.exports = {
+  getById: async (req, res, next) => {
+    try {
+      const post = await Repo.getById(req.params.id);
+      if (
+        !post ||
+        post.status !== "AVAILABLE" ||
+        Number(post.is_approved) !== 1
+      ) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy bài đăng đang hiển thị",
+        });
+      }
+      return res.json({ success: true, data: post });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getByAuthor: async (req, res, next) => {
+    try {
+      const authorId = Number(req.params.userId);
+      if (authorId !== res.locals.user.userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ có thể xem danh sách bài đăng của chính mình.",
+        });
+      }
+      const sortOrder = req.query.sort === "oldest" ? "ASC" : "DESC";
+      const data = await Repo.getByAuthorId(authorId, sortOrder);
+      return res.json({ success: true, data });
+    } catch (err) {
+      next(err);
+    }
+  },
+
   getAll: async (req, res, next) => {
     try {
       const data = await Repo.getAll();
@@ -50,6 +86,23 @@ module.exports = {
       const districtCode = parseCode(req.query.district_code);
       const wardCode = parseCode(req.query.ward_code);
       const landmarkId = parseCode(req.query.landmark_id);
+      const keyword =
+        typeof req.query.keyword === "string" ? req.query.keyword.trim() : "";
+      if (
+        req.query.keyword !== undefined &&
+        typeof req.query.keyword !== "string"
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Từ khóa tìm kiếm không hợp lệ",
+        });
+      }
+      if (keyword.length > 100) {
+        return res.status(400).json({
+          success: false,
+          message: "Từ khóa tìm kiếm không được vượt quá 100 ký tự",
+        });
+      }
       const invalidCodes = [
         provinceCode,
         districtCode,
@@ -101,6 +154,7 @@ module.exports = {
         districtCode,
         wardCode,
         landmarkId,
+        keyword,
         radiusKm,
         page,
         limit,
@@ -153,12 +207,16 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const userId = Number(req.body.user_id ?? req.body.author_id);
+      const userId = res.locals.user.userId;
+      const requestedUserId = req.body.user_id ?? req.body.author_id;
+      if (requestedUserId != null && Number(requestedUserId) !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Không thể đăng bài thay cho tài khoản khác.",
+        });
+      }
       const requestedPostType = req.body.post_type ?? req.body.type;
-      const user =
-        Number.isInteger(userId) && userId > 0
-          ? await UsersRepo.getById(userId)
-          : null;
+      const user = await UsersRepo.getById(userId);
 
       if (!user) {
         return res.status(401).json({
@@ -170,6 +228,39 @@ module.exports = {
         return res.status(403).json({
           success: false,
           message: `Vai trò ${user.role} không được đăng bài loại ${requestedPostType}.`,
+        });
+      }
+
+      const title =
+        typeof req.body.title === "string" ? req.body.title.trim() : "";
+      const description =
+        typeof req.body.description === "string"
+          ? req.body.description.trim()
+          : "";
+      const price = Number(req.body.price);
+      const images = Array.isArray(req.body.images) ? req.body.images : [];
+      if (
+        !title ||
+        title.length > 200 ||
+        !description ||
+        !Number.isFinite(price) ||
+        price <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Tiêu đề, mô tả và giá lớn hơn 0 là bắt buộc.",
+        });
+      }
+      if (
+        images.length > 6 ||
+        (requestedPostType !== "FIND" && images.length < 2)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            requestedPostType === "FIND"
+              ? "Mỗi bài đăng được tải tối đa 6 ảnh."
+              : "Bài đăng cần tối thiểu 2 ảnh và không vượt quá 6 ảnh.",
         });
       }
 
@@ -216,14 +307,25 @@ module.exports = {
             "Vui lòng cung cấp latitude/longitude hoặc post_lat/post_lng hợp lệ",
         });
       }
-      const newItem = await Repo.create(req.body);
-      await Notifications.notify(
-        userId,
-        "POST_APPROVED",
-        "Tin đăng đã được duyệt",
-        "Tin đăng của bạn đã được xuất bản.",
-        { post_id: newItem.post_id },
-      );
+      const newItem = await Repo.create({
+        ...req.body,
+        user_id: userId,
+        author_id: userId,
+      });
+      try {
+        await Notifications.notify(
+          userId,
+          "POST_APPROVED",
+          "Tin đăng đã được duyệt",
+          "Tin đăng của bạn đã được xuất bản.",
+          { post_id: newItem.post_id },
+        );
+      } catch (notificationError) {
+        console.error(
+          "Post created but notification failed:",
+          notificationError.message,
+        );
+      }
       const authorId = userId;
       const postType = newItem.post_type ?? newItem.type;
       try {
@@ -274,18 +376,100 @@ module.exports = {
 
   update: async (req, res, next) => {
     try {
-      if (Object.prototype.hasOwnProperty.call(req.body, "status")) {
-        return res.status(403).json({
+      const postId = Number(req.params.id);
+      const updates = {};
+      if (Object.prototype.hasOwnProperty.call(req.body, "title")) {
+        const title =
+          typeof req.body.title === "string" ? req.body.title.trim() : "";
+        if (!title || title.length > 200) {
+          return res.status(400).json({
+            success: false,
+            message: "Tiêu đề phải có từ 1 đến 200 ký tự.",
+          });
+        }
+        updates.title = title;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, "description")) {
+        const description =
+          typeof req.body.description === "string"
+            ? req.body.description.trim()
+            : "";
+        if (!description) {
+          return res.status(400).json({
+            success: false,
+            message: "Mô tả bài đăng không được để trống.",
+          });
+        }
+        updates.description = description;
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body, "price")) {
+        const price = Number(req.body.price);
+        if (!Number.isFinite(price) || price <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: "Giá bài đăng phải lớn hơn 0.",
+          });
+        }
+        updates.price = price;
+      }
+      if (!Object.keys(updates).length) {
+        return res.status(400).json({
           success: false,
-          message:
-            "Chỉ chủ bài đăng được xác nhận đã cho thuê hoặc mở lại bài đăng.",
+          message: "Không có nội dung hợp lệ để cập nhật.",
         });
       }
-      const updated = await Repo.update(req.params.id, req.body);
-      res.json({
+      const updated = await Repo.updateOwned(
+        postId,
+        res.locals.user.userId,
+        updates,
+      );
+      if (!updated) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy bài đăng của bạn.",
+        });
+      }
+      return res.json({
         success: true,
-        message: "Updated successfully",
-        data: updated,
+        message: "Cập nhật thành công. Bài đăng đang chờ Admin duyệt lại.",
+        data: { post_id: postId, review_status: "PENDING" },
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  setVisibility: async (req, res, next) => {
+    try {
+      const postId = Number(req.params.id);
+      const status = req.body.status;
+      if (
+        !Number.isInteger(postId) ||
+        postId < 1 ||
+        !["AVAILABLE", "HIDDEN"].includes(status)
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Trạng thái hiển thị không hợp lệ.",
+        });
+      }
+      const updated = await Repo.setVisibility(
+        postId,
+        res.locals.user.userId,
+        status,
+      );
+      if (!updated) {
+        return res.status(409).json({
+          success: false,
+          message:
+            "Không tìm thấy bài đăng của bạn hoặc bài đã ở trạng thái đã cho thuê.",
+        });
+      }
+      return res.json({
+        success: true,
+        message:
+          status === "HIDDEN" ? "Đã ẩn bài đăng." : "Đã hiển thị bài đăng.",
+        data: { post_id: postId, status },
       });
     } catch (err) {
       next(err);
@@ -294,7 +478,10 @@ module.exports = {
 
   delete: async (req, res, next) => {
     try {
-      const success = await Repo.delete(req.params.id);
+      const success = await Repo.deleteOwned(
+        req.params.id,
+        res.locals.user.userId,
+      );
       if (!success)
         return res.status(404).json({ success: false, message: "Not found" });
       res.json({ success: true, message: "Deleted successfully" });

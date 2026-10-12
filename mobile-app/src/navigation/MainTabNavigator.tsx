@@ -82,7 +82,11 @@ export const MainTabNavigator: React.FC<Props> = ({
         )}
         {currentTab === "CREATE" && (
           <CreatePostScreen
-            onCreated={onOpenCreate}
+            onCreated={() => {
+              setCurrentTab("ACTIVITY");
+              onOpenCreate();
+            }}
+            onBack={() => setCurrentTab("HOME")}
             userId={userId}
             userRole={userRole}
           />
@@ -176,7 +180,7 @@ export const MainTabNavigator: React.FC<Props> = ({
               currentTab === "ACTIVITY" && styles.activeText,
             ]}
           >
-            Bài viết
+            Bài của tôi
           </Text>
         </TouchableOpacity>
 

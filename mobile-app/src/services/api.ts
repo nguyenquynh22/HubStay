@@ -48,6 +48,14 @@ export const getPostsByUserId = async (
   userId: number,
   sort: "newest" | "oldest" = "newest",
 ) => (await api.get(`/posts/user/${userId}`, { params: { sort } })).data;
+export const updatePost = async (
+  postId: number,
+  payload: { title: string; description: string; price: number },
+) => (await api.put(`/posts/${postId}`, payload)).data;
+export const setPostVisibility = async (
+  postId: number,
+  status: "AVAILABLE" | "HIDDEN",
+) => (await api.patch(`/posts/${postId}/visibility`, { status })).data;
 export const getUserById = async (userId: number) =>
   (await api.get(`/users/${userId}`)).data;
 export const updateUser = async (
@@ -85,6 +93,7 @@ export const getNearbyPosts = async (landmarkId: number, radiusKm = 10) =>
     })
   ).data;
 export const searchPosts = async (filters: {
+  keyword?: string;
   province_code?: number;
   district_code?: number;
   ward_code?: number;
@@ -101,7 +110,6 @@ export const createPost = async (payload: Record<string, unknown>) =>
   (await api.post("/posts", payload, { timeout: 120000 })).data;
 export const createReport = async (payload: {
   post_id: number;
-  reporter_id: number;
   reason: string;
   description?: string;
   evidence_image_url?: string;
@@ -176,6 +184,17 @@ export const markNotificationsRead = async (userId: number) =>
   (await api.patch(`/notifications/user/${userId}/read-all`)).data;
 export const deleteAllNotifications = async (userId: number) =>
   (await api.delete(`/notifications/user/${userId}`)).data;
+export const deleteNotification = async (notificationId: number) =>
+  (await api.delete(`/notifications/${notificationId}`)).data;
+export const deleteSelectedNotifications = async (
+  userId: number,
+  notificationIds: number[],
+) =>
+  (
+    await api.delete(`/notifications/user/${userId}/selected`, {
+      data: { notification_ids: notificationIds },
+    })
+  ).data;
 export const getRentalRequests = async (userId: number) =>
   (await api.get(`/rental-requests/user/${userId}`)).data;
 export const updateRentalRequest = async (
@@ -218,7 +237,7 @@ export const updateAppointment = async (
   appointmentId: number,
   payload: {
     actor_id: number;
-    status?: "CONFIRMED" | "CANCELLED";
+    status?: "CONFIRMED" | "REJECTED" | "CANCELLED";
     appointment_date?: string;
     appointment_time?: string;
     note?: string;

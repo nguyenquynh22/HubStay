@@ -53,6 +53,11 @@ module.exports = {
         return res
           .status(400)
           .json({ success: false, message: "userId không hợp lệ" });
+      if (userId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Bạn chỉ có thể xem yêu cầu thuê của mình.",
+        });
       const data = await Repo.getForUser(userId);
       res.json({ success: true, data });
     } catch (err) {
@@ -67,6 +72,14 @@ module.exports = {
         return res
           .status(404)
           .json({ success: false, message: "Yêu cầu không tồn tại" });
+      if (
+        Number(item.tenant_id) !== res.locals.user.userId &&
+        Number(item.author_id) !== res.locals.user.userId
+      )
+        return res.status(403).json({
+          success: false,
+          message: "Bạn không có quyền xem yêu cầu thuê này.",
+        });
       res.json({ success: true, data: item });
     } catch (err) {
       next(err);
@@ -75,7 +88,19 @@ module.exports = {
 
   getByPost: async (req, res, next) => {
     try {
-      const data = await Repo.getByPostId(req.params.postId);
+      const postId = parseId(req.params.postId);
+      if (!postId)
+        return res.status(400).json({
+          success: false,
+          message: "postId không hợp lệ",
+        });
+      const ownerId = Number(await Repo.getPostOwner(postId));
+      if (ownerId !== res.locals.user.userId)
+        return res.status(403).json({
+          success: false,
+          message: "Chỉ chủ bài đăng được xem toàn bộ yêu cầu thuê.",
+        });
+      const data = await Repo.getByPostId(postId);
       res.json({ success: true, data });
     } catch (err) {
       next(err);
@@ -84,15 +109,20 @@ module.exports = {
 
   create: async (req, res, next) => {
     try {
-      const { post_id, tenant_id, note, status } = req.body;
+      const { post_id, note, status } = req.body;
       const postId = parseId(post_id);
-      const tenantId = parseId(tenant_id);
+      const tenantId = res.locals.user.userId;
       if (!postId || !tenantId) {
         return res.status(400).json({
           success: false,
-          message: "post_id và tenant_id hợp lệ là bắt buộc",
+          message: "post_id hợp lệ là bắt buộc",
         });
       }
+      if (req.body.tenant_id && Number(req.body.tenant_id) !== tenantId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể gửi yêu cầu thuê thay cho tài khoản khác.",
+        });
 
       if (status && status !== "PENDING") {
         return res.status(400).json({
@@ -128,17 +158,17 @@ module.exports = {
       const { status } = req.body;
       const validStatuses = ["PENDING", "ACCEPTED", "REJECTED", "CANCELLED"];
       const requestId = parseId(req.params.id);
-      const actorId = parseId(req.body.actor_id);
-      if (
-        !requestId ||
-        !actorId ||
-        !status ||
-        !validStatuses.includes(status)
-      ) {
+      const actorId = res.locals.user.userId;
+      if (!requestId || !status || !validStatuses.includes(status)) {
         return res
           .status(400)
           .json({ success: false, message: "Trạng thái không hợp lệ" });
       }
+      if (req.body.actor_id && Number(req.body.actor_id) !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể xử lý yêu cầu thuê bằng tài khoản khác.",
+        });
 
       const result = await Repo.transitionStatus(requestId, actorId, status);
       if (result.error) return respondToError(res, result.error);
@@ -181,13 +211,18 @@ module.exports = {
   markPostRented: async (req, res, next) => {
     try {
       const postId = parseId(req.params.postId);
-      const actorId = parseId(req.body.actor_id);
+      const actorId = res.locals.user.userId;
       if (!postId || !actorId) {
         return res.status(400).json({
           success: false,
           message: "postId và actor_id hợp lệ là bắt buộc",
         });
       }
+      if (req.body.actor_id && Number(req.body.actor_id) !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể cập nhật bài đăng bằng tài khoản khác.",
+        });
       const result = await Repo.markPostRented(postId, actorId);
       if (result.error) return respondToError(res, result.error);
       await publishPostStatus(postId, "RENTED");
@@ -213,13 +248,18 @@ module.exports = {
   reopenPost: async (req, res, next) => {
     try {
       const postId = parseId(req.params.postId);
-      const actorId = parseId(req.body.actor_id);
+      const actorId = res.locals.user.userId;
       if (!postId || !actorId) {
         return res.status(400).json({
           success: false,
           message: "postId và actor_id hợp lệ là bắt buộc",
         });
       }
+      if (req.body.actor_id && Number(req.body.actor_id) !== actorId)
+        return res.status(403).json({
+          success: false,
+          message: "Không thể cập nhật bài đăng bằng tài khoản khác.",
+        });
       const result = await Repo.reopenPost(postId, actorId);
       if (result.error) return respondToError(res, result.error);
       await Conversation.updateMany(

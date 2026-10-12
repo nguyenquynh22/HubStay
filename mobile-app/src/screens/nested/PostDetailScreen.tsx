@@ -310,20 +310,22 @@ export default function PostDetailScreen({
               <MaterialIcons name="share" size={20} color="#131b2e" />
             </TouchableOpacity>
 
-            <TouchableOpacity
-              accessibilityRole="button"
-              accessibilityLabel={
-                isSaved ? "Bỏ lưu bài đăng" : "Lưu bài đăng vào yêu thích"
-              }
-              style={[styles.circleBtn, isSaved && styles.savedCircleBtn]}
-              onPress={handleToggleSaved}
-            >
-              <MaterialIcons
-                name={isSaved ? "bookmark" : "bookmark-border"}
-                size={24}
-                color={isSaved ? "#00685f" : "#131b2e"}
-              />
-            </TouchableOpacity>
+            {!isOwnPost && (
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isSaved ? "Bỏ lưu bài đăng" : "Lưu bài đăng vào yêu thích"
+                }
+                style={[styles.circleBtn, isSaved && styles.savedCircleBtn]}
+                onPress={handleToggleSaved}
+              >
+                <MaterialIcons
+                  name={isSaved ? "bookmark" : "bookmark-border"}
+                  size={24}
+                  color={isSaved ? "#00685f" : "#131b2e"}
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Nút Điều hướng Next / Prev Ảnh */}
@@ -535,10 +537,12 @@ export default function PostDetailScreen({
             </View>
 
             {/* Nút báo cáo bài đăng */}
-            <TouchableOpacity style={styles.reportBtn} onPress={handleReport}>
-              <MaterialIcons name="flag" size={18} color="#ba1a1a" />
-              <Text style={styles.reportText}>Báo cáo tin</Text>
-            </TouchableOpacity>
+            {!isOwnPost && (
+              <TouchableOpacity style={styles.reportBtn} onPress={handleReport}>
+                <MaterialIcons name="flag" size={18} color="#ba1a1a" />
+                <Text style={styles.reportText}>Báo cáo tin</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </ScrollView>

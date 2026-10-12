@@ -89,9 +89,15 @@ class appointmentsRepository {
       }
     }
     if (!columns.length) return false;
+    let statusCondition = "";
+    if (data.status === "CONFIRMED" || data.status === "REJECTED") {
+      statusCondition = " AND status = 'PENDING'";
+    } else if (data.status === "CANCELLED") {
+      statusCondition = " AND status IN ('PENDING', 'CONFIRMED')";
+    }
     values.push(id);
     const [result] = await db.query(
-      `UPDATE appointments SET ${columns.join(", ")} WHERE appointment_id = ?`,
+      `UPDATE appointments SET ${columns.join(", ")} WHERE appointment_id = ?${statusCondition}`,
       values,
     );
     return result.affectedRows > 0;

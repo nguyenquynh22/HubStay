@@ -71,6 +71,14 @@ class TransactionsRepository {
         await connection.rollback();
         return { error: "FORBIDDEN" };
       }
+      const [accountRows] = await connection.query(
+        "SELECT role FROM users WHERE user_id = ? FOR UPDATE",
+        [transaction.user_id],
+      );
+      if (accountRows[0]?.role !== "LANDLORD") {
+        await connection.rollback();
+        return { error: "INVALID_ROLE" };
+      }
       if (transaction.transaction_type !== "TOP_UP") {
         await connection.rollback();
         return { error: "NOT_TOP_UP" };

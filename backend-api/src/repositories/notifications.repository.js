@@ -47,6 +47,23 @@ class NotificationsRepository {
     );
     return result.affectedRows;
   }
+
+  static async deleteOne(userId, notificationId) {
+    const [result] = await db.query(
+      "DELETE FROM notifications WHERE notification_id = ? AND user_id = ?",
+      [notificationId, userId],
+    );
+    return result.affectedRows > 0;
+  }
+
+  static async deleteSelected(userId, notificationIds) {
+    const placeholders = notificationIds.map(() => "?").join(", ");
+    const [result] = await db.query(
+      `DELETE FROM notifications WHERE user_id = ? AND notification_id IN (${placeholders})`,
+      [userId, ...notificationIds],
+    );
+    return result.affectedRows;
+  }
 }
 
 module.exports = NotificationsRepository;

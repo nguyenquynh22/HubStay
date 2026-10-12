@@ -11,6 +11,29 @@ const {
 } = require("../src/lib/home-recommendations");
 const { isValidPassword } = require("../src/lib/password-policy");
 const { getKycSubmissionBlock } = require("../src/lib/kyc-submission-policy");
+const { buildKeywordConditions } = require("../src/lib/post-search");
+const { canTopUpWallet } = require("../src/lib/financial-access-policy");
+const {
+  normalizeNotificationIds,
+} = require("../src/lib/notification-selection-policy");
+
+test("only landlords can top up the wallet", () => {
+  assert.equal(canTopUpWallet("LANDLORD"), true);
+  assert.equal(canTopUpWallet("STUDENT"), false);
+  assert.equal(canTopUpWallet("WORKER"), false);
+  assert.equal(canTopUpWallet("ADMIN"), false);
+});
+
+test("notification deletion accepts valid selected IDs and rejects invalid lists", () => {
+  assert.deepEqual(normalizeNotificationIds([3, "5", 3]), [3, 5]);
+  assert.equal(normalizeNotificationIds([]), null);
+  assert.equal(normalizeNotificationIds([1, 0]), null);
+  assert.equal(normalizeNotificationIds([1.5]), null);
+  assert.equal(
+    normalizeNotificationIds(Array.from({ length: 51 }, (_, i) => i + 1)),
+    null,
+  );
+});
 
 test("role maps allowed post types", () => {
   assert.deepEqual(getAllowedPostTypes("LANDLORD"), ["RENTAL"]);
@@ -74,4 +97,20 @@ test("KYC submission is allowed only initially or after rejection", () => {
   assert.equal(getKycSubmissionBlock(1, "REJECTED"), "VERIFIED");
   assert.equal(getKycSubmissionBlock(0, "APPROVED"), "VERIFIED");
   assert.equal(getKycSubmissionBlock(0, "OTHER"), "UNAVAILABLE");
+});
+
+test("post keyword search matches every term across searchable post fields", () => {
+  const empty = buildKeywordConditions("  ");
+  assert.deepEqual(empty, { conditions: [], values: [] });
+
+  const result = buildKeywordConditions("phòng  2_3%");
+  assert.equal(result.conditions.length, 2);
+  assert.equal(result.values.length, 10);
+  assert.ok(result.conditions[0].includes("p.title LIKE ?"));
+  assert.ok(result.conditions[0].includes("p.description LIKE ?"));
+  assert.ok(result.conditions[0].includes("p.address_detail LIKE ?"));
+  assert.ok(result.conditions[0].includes("u.full_name LIKE ?"));
+  assert.ok(result.conditions[0].includes("l.name LIKE ?"));
+  assert.equal(result.values[0], "%phòng%");
+  assert.ok(result.values[5].includes("\\_3\\%"));
 });

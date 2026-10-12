@@ -255,7 +255,7 @@ export default function ProfileScreen({
           </TouchableOpacity>
         )}
 
-        {user?.role !== "ADMIN" && (
+        {user?.role === "LANDLORD" && (
           <TouchableOpacity
             style={styles.menuItem}
             onPress={onOpenPaymentSimulation}
